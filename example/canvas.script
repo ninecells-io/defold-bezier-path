@@ -1,3 +1,5 @@
+local m = require "bezierpath/bezierpath"
+
 function init(self)
     msg.post("@render:", "clear_color", {color = vmath.vector4(1, 1, 1, 1)})
     -- size of texture when scaled to nearest power of two
@@ -29,17 +31,26 @@ function init(self)
 
     local margin = width * 0.1
 
-    bezierpath.fill_color(self.buffer_info, 255, 0, 0, 128) -- Semi-transparent red
+    m.fill_color(self.buffer_info, m.rgbaToColor(100, 100, 100, 128)) -- Semi-transparent grey
 
+    m.rounded_rect(20, 20, 350, 250, 32)
+    m.fill_path_gradient(
+        self.buffer_info,
+        m.rgbaToColor(255, 0, 0, 255),
+        m.rgbaToColor(0, 0, 255, 255),
+        45
+    )
+
+    --[[
     bezierpath.reset_path()
 
     local m = 40
     local w = width
     local h = height
-    local r = 40 -- radius
+    local r = 80 -- radius
 
   
-    --[[
+    
     bezierpath.add_point(m, m)
     bezierpath.add_point(w - m - r, m)
     bezierpath.add_bezier_point(w - m, m + r, w - m, m)
@@ -48,11 +59,12 @@ function init(self)
     bezierpath.add_point(m, h - m)
     bezierpath.set_path_closed(true)
     
-    bezierpath.fill_shadow(self.buffer_info, 0, 0, m * 0.5, 0, 0, 0, 220)
-    --bezierpath.fill_path_gradient(self.buffer_info, 255, 0, 0, 255, 0, 0, 255, 255, 45)
-    bezierpath.stroke_path(self.buffer_info, 8, 0, 0, 0, 255, "center", "round", "round")
-    ]]--
+    bezierpath.fill_shadow(self.buffer_info, 0, 0, 20, 0, 0, 0, 220)
+    bezierpath.fill_path_gradient(self.buffer_info, 255, 0, 0, 255, 0, 0, 255, 255, 45)
+    --bezierpath.stroke_path_glow(self.buffer_info, 5, 10, "center", 0, 255, 0, 100)
+    bezierpath.stroke_path(self.buffer_info, 5, 0, 0, 0, 255, "center", "round", "round")
     
+
     bezierpath.add_point(120, 500)
     bezierpath.add_point(100, 300)
     bezierpath.add_point(200, 200)
@@ -61,9 +73,10 @@ function init(self)
     bezierpath.add_point(400, 200)
 
     bezierpath.add_point(500, 220)
-    bezierpath.set_path_closed(false)
+    bezierpath.set_path_closed(true)
     bezierpath.stroke_path(self.buffer_info, 20, 0, 0, 0, 100, "center", "round", "round")
     --bezierpath.stroke_path(self.buffer_info, 20, 0, 0, 0, 255, "center", "round", "round")
+    ]]--
    
     
     resource.set_texture(self.resource_path, self.header, self.buffer_info.buffer)
