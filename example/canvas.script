@@ -42,7 +42,7 @@ function init(self)
     )
 
     m.rounded_rect(100, 60, 300, 250, 32)
-    m.fill_shadow(self.buffer_info, 0, 0, 20, m.rgbaToColor(0, 0, 0, 200))
+    m.fill_shadow(self.buffer_info, m.zero(), 20, m.black(200))
     m.fill_path_gradient(
         self.buffer_info,
         m.rgbaToColor(255, 0, 0, 200),
@@ -50,8 +50,11 @@ function init(self)
         45
     )
 
+    m.line(m.point(110, 120), m.point(390, 120))
+    m.stroke_path(self.buffer_info, 4, m.white(200), "center", "round")
+
     m.rounded_rect(240, 240, 200, 55, 16)
-    m.fill_shadow(self.buffer_info, 0, 0, 10, m.rgbaToColor(0, 0, 0, 222))
+    m.fill_shadow(self.buffer_info, m.zero(), 10, m.rgbaToColor(0, 0, 0, 222))
     m.fill_path(
         self.buffer_info,
         m.rgbaToColor(0, 255, 0, 150)
@@ -59,46 +62,19 @@ function init(self)
     m.stroke_path(
         self.buffer_info,
         2,
-        m.rgbaToColor(0, 0, 0, 80),
+        m.black(80),
         "center", "round", "round"
     )
 
-    --[[
-    bezierpath.reset_path()
+    m.polygon({
+        m.point(100, 500),
+        m.point(200, 400),
+        m.point(300, 500),
+        m.point(400, 400)
+    })
 
-    local m = 40
-    local w = width
-    local h = height
-    local r = 80 -- radius
+    m.stroke_path(self.buffer_info, 20, m.rgbaToColor(255, 0, 0, 255), "center", "round", "round")
 
-  
-    
-    bezierpath.add_point(m, m)
-    bezierpath.add_point(w - m - r, m)
-    bezierpath.add_bezier_point(w - m, m + r, w - m, m)
-    bezierpath.add_point(w - m, h - m - r)
-    bezierpath.add_bezier_point(w - m - r, h - m, w - m, h - m)
-    bezierpath.add_point(m, h - m)
-    bezierpath.set_path_closed(true)
-    
-    bezierpath.fill_shadow(self.buffer_info, 0, 0, 20, 0, 0, 0, 220)
-    bezierpath.fill_path_gradient(self.buffer_info, 255, 0, 0, 255, 0, 0, 255, 255, 45)
-    --bezierpath.stroke_path_glow(self.buffer_info, 5, 10, "center", 0, 255, 0, 100)
-    bezierpath.stroke_path(self.buffer_info, 5, 0, 0, 0, 255, "center", "round", "round")
-    
-
-    bezierpath.add_point(120, 500)
-    bezierpath.add_point(100, 300)
-    bezierpath.add_point(200, 200)
-    bezierpath.add_point(300, 300)
-
-    bezierpath.add_point(400, 200)
-
-    bezierpath.add_point(500, 220)
-    bezierpath.set_path_closed(true)
-    bezierpath.stroke_path(self.buffer_info, 20, 0, 0, 0, 100, "center", "round", "round")
-    --bezierpath.stroke_path(self.buffer_info, 20, 0, 0, 0, 255, "center", "round", "round")
-    ]]--
    
     
     resource.set_texture(self.resource_path, self.header, self.buffer_info.buffer)
