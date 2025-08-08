@@ -1,0 +1,12 @@
+
+.externalToolBuilders
+.DS_Store
+.lock-wscript
+build
+*.pyc
+.project
+.vscode
+.cproject
+builtins
+.internal
+/.editor_settings

@@ -1,0 +1,6 @@
+name: "BezierPath"
+
+platforms:
+    x86_64-linux:
+        context:
+            flags: ["-std=c++11"]
