@@ -454,3 +454,146 @@ void stroke_path(
         }
     }
 }
+
+// Soft glow outside the stroke.
+// width        : stroke width in pixels
+// radius       : glow thickness outside the outer stroke edge
+// position_mode: StrokePosition { CENTER = 0, INSIDE, OUTSIDE }
+// color        : r,g,b,a (a is max opacity right at the outer stroke edge)
+void stroke_path_glow(float width, float radius, int position_mode, int r, int g, int b, int a)
+{
+    if (radius <= 0.0f || a <= 0) return;
+    if (g_path_points.empty()) return;
+
+    const int img_w = buffer_info.width;
+    const int img_h = buffer_info.height;
+    const int channels = buffer_info.channels;
+    const bool premul = buffer_info.premultiply_alpha;
+
+    const int supersample = 4;
+    const int s_width  = img_w * supersample;
+    const int s_height = img_h * supersample;
+
+    // Flatten path like stroke_path
+    std::vector<std::pair<float, float>> flat_path;
+    std::vector<uint8_t> corner_flags;
+    flatten_path(flat_path, 16, &corner_flags);
+    if (flat_path.size() < 2) return;
+
+    // Distance helper (point -> segment)
+    auto dist_point_seg = [](float px, float py,
+                             float ax, float ay,
+                             float bx, float by) -> float
+    {
+        float vx = bx - ax, vy = by - ay;
+        float wx = px - ax, wy = py - ay;
+        float vv = vx*vx + vy*vy;
+        if (vv <= 0.0f) return std::hypot(px - ax, py - ay);
+        float t = (vx*wx + vy*wy) / vv;
+        if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+        float qx = ax + t*vx, qy = ay + t*vy;
+        return std::hypot(px - qx, py - qy);
+    };
+
+    // Build segment list (respect path_closed)
+    struct Seg { float ax, ay, bx, by; };
+    std::vector<Seg> segs;
+    segs.reserve(flat_path.size() + 1);
+    for (size_t i = 0; i + 1 < flat_path.size(); ++i)
+        segs.push_back({ flat_path[i].first, flat_path[i].second,
+                         flat_path[i+1].first, flat_path[i+1].second });
+    if (path_closed && flat_path.size() >= 2)
+        segs.push_back({ flat_path.back().first,  flat_path.back().second,
+                         flat_path.front().first, flat_path.front().second });
+
+    // Where the glow begins (outer edge of stroke on the outside/left side)
+    float base_offset = 0.0f;
+    switch (position_mode) {
+        case 0: /* CENTER  */ base_offset = 0.5f * std::max(0.0f, width); break;
+        case 1: /* INSIDE  */ base_offset = 0.0f;                         break;
+        case 2: /* OUTSIDE */ base_offset = std::max(0.0f, width);        break;
+        default:              base_offset = 0.5f * std::max(0.0f, width); break;
+    }
+
+    // Supersampled glow buffer
+    std::vector<float> glow(s_width * s_height, 0.0f);
+
+    for (int y = 0; y < s_height; ++y)
+    {
+        for (int x = 0; x < s_width; ++x)
+        {
+            // Sample center (Y flipped to match your rasterization)
+            float fx = (float)x / supersample + 0.5f / supersample;
+            float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
+
+            // Min distance to centerline segments
+            float dmin = 1e30f;
+            for (const auto& s : segs)
+            {
+                float d = dist_point_seg(fx, fy, s.ax, s.ay, s.bx, s.by);
+                if (d < dmin) dmin = d;
+                if (dmin <= base_offset) break; // inside stroke; no glow
+            }
+
+            // Only outside the stroke edge: (base_offset, base_offset + radius)
+            if (dmin > base_offset && dmin < base_offset + radius)
+            {
+                float t = (dmin - base_offset) / radius;           // 0 at edge, 1 at edge+radius
+                float sm = 1.0f - (t * t * (3.0f - 2.0f * t));     // smoothstep falloff 1..0
+                glow[y * s_width + x] = sm;
+            }
+        }
+    }
+
+    // Composite glow into destination
+    uint8_t* dst = buffer_info.bytes;
+    const float inv_samples = 1.0f / (supersample * supersample);
+
+    for (int y = 0; y < img_h; ++y)
+    {
+        for (int x = 0; x < img_w; ++x)
+        {
+            float sum = 0.0f;
+            for (int sy = 0; sy < supersample; ++sy)
+            for (int sx = 0; sx < supersample; ++sx)
+            {
+                int cx = x * supersample + sx;
+                int cy = y * supersample + sy;
+                sum += glow[cx + cy * s_width];
+            }
+
+            float cov = std::min(sum * inv_samples, 1.0f);
+            if (cov <= 0.0f) continue;
+
+            uint8_t sa = static_cast<uint8_t>(std::round(std::min(255.0f, a * cov)));
+            uint8_t sr = r, sg = g, sb = b;
+
+            if (premul && sa < 255)
+            {
+                float scale = sa / 255.0f;
+                sr = static_cast<uint8_t>(std::round(sr * scale));
+                sg = static_cast<uint8_t>(std::round(sg * scale));
+                sb = static_cast<uint8_t>(std::round(sb * scale));
+            }
+
+            int idx = (y * img_w + x) * channels;
+
+            if (channels == 4)
+            {
+                float src_a = sa / 255.0f;
+                float inv_a = 1.0f - src_a;
+
+                dst[idx + 0] = static_cast<uint8_t>(sr * src_a + dst[idx + 0] * inv_a);
+                dst[idx + 1] = static_cast<uint8_t>(sg * src_a + dst[idx + 1] * inv_a);
+                dst[idx + 2] = static_cast<uint8_t>(sb * src_a + dst[idx + 2] * inv_a);
+                dst[idx + 3] = static_cast<uint8_t>(sa + dst[idx + 3] * inv_a);
+            }
+            else if (channels == 3)
+            {
+                dst[idx + 0] = sr;
+                dst[idx + 1] = sg;
+                dst[idx + 2] = sb;
+            }
+        }
+    }
+}

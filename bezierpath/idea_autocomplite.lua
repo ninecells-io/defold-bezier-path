@@ -29,4 +29,8 @@ function bezierpath.fill_shadow(buffer_info, offset_x, offset_y, radius, red, gr
 --Draw a stroke along the path
 function bezierpath.stroke_path(buffer_info, width, red, green, blue, alpha, position, cap_style, join_style) end
 
+--Draw a glow effect along the path
+function bezierpath.stroke_path_glow(buffer_info, width, radius, position, red, green, blue, alpha) end
+
+
 return

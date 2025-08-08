@@ -220,6 +220,39 @@ static int stroke_path_lua(lua_State* L)
     return 0;
 }
 
+static int stroke_path_glow_lua(lua_State* L)
+{
+    int top = lua_gettop(L);
+
+    read_and_validate_buffer_info(L, 1);
+
+    float stroke_width = luaL_checknumber(L, 2);
+    float radius = luaL_checknumber(L, 3);
+    int r = luaL_checknumber(L, 5);
+    int g = luaL_checknumber(L, 6);
+    int b = luaL_checknumber(L, 7);
+    int a = luaL_checknumber(L, 8);
+
+    StrokePosition position = CENTER;
+    if (lua_isstring(L, 4))
+    {
+        const char* position_str = luaL_checkstring(L, 4);
+        if (strcmp(position_str, "center") == 0) {
+            position = CENTER;
+        } else if (strcmp(position_str, "inside") == 0) {
+            position = INSIDE;
+        } else if (strcmp(position_str, "outside") == 0) {
+            position = OUTSIDE;
+        } else {
+            return luaL_error(L, "Invalid stroke position: %s", position_str);
+        }
+    }
+
+    stroke_path_glow(stroke_width, radius, position, r, g, b, a);
+
+    assert(top == lua_gettop(L));
+    return 0;
+}
 
 // Functions exposed to Lua
 static const luaL_reg Module_methods[] = {
@@ -232,6 +265,7 @@ static const luaL_reg Module_methods[] = {
         {"fill_path_gradient", fill_path_gradient_lua},
         {"fill_shadow", fill_shadow_lua},
         {"stroke_path", stroke_path_lua},
+        {"stroke_path_glow", stroke_path_glow_lua},
         {0, 0}};
 
 static void LuaInit(lua_State *L)
