@@ -158,126 +158,137 @@ void fill_path_gradient(
     float angle_deg
 ) {
     const int supersample = 4;
-    const int width = buffer_info.width;
-    const int height = buffer_info.height;
-    const int channels = buffer_info.channels;
-    const bool premul = buffer_info.premultiply_alpha;
+    const int width      = buffer_info.width;
+    const int height     = buffer_info.height;
+    const int channels   = buffer_info.channels;
+    const bool premul    = buffer_info.premultiply_alpha;
 
-    if (g_path_points.empty())
+    if (g_path_points.empty() || width <= 0 || height <= 0 || channels < 3)
         return;
 
+    // 1) Flatten path once
     std::vector<std::pair<float, float>> flat_path;
     flatten_path(flat_path);
+    if (flat_path.empty())
+        return;
 
-    const int s_width = width * supersample;
+    // 2) Supersampled grid + coverage buffer
+    const int s_width  = width  * supersample;
     const int s_height = height * supersample;
     std::vector<float> coverage(s_width * s_height, 0.0f);
 
-    // Fill coverage using point-in-polygon
+    // 3) Gradient direction (unit vector)
+    const float angle_rad = angle_deg * (float)M_PI / 180.0f;
+    const float gx = cosf(angle_rad);
+    const float gy = sinf(angle_rad);
+
+    // Precompute sample mapping (center-of-cell sampling)
+    const float inv_ss   = 1.0f / (float)supersample;
+    const float half_ss  = 0.5f * inv_ss;
+
+    // 4) Fill coverage and simultaneously compute min_t / max_t
+    float min_t = std::numeric_limits<float>::infinity();
+    float max_t = -std::numeric_limits<float>::infinity();
+
     for (int y = 0; y < s_height; ++y)
     {
         for (int x = 0; x < s_width; ++x)
         {
-            float fx = (float)x / supersample + 0.5f / supersample;
-            float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
+            // Convert supersample pixel (x,y) to *buffer-space* sample position (fx, fy)
+            // Note: original code flips Y by sampling from top -> bottom using (s_height - y - 1)
+            const float fx = (float)x * inv_ss + half_ss;
+            const float fy = (float)(s_height - y - 1) * inv_ss + half_ss;
 
             if (point_in_polygon(fx, fy, flat_path))
             {
                 coverage[y * s_width + x] = 1.0f;
+
+                // Track gradient projection range only for covered samples
+                const float t = fx * gx + fy * gy;
+                if (t < min_t) min_t = t;
+                if (t > max_t) max_t = t;
             }
         }
     }
 
-    // Gradient direction vector
-    float angle_rad = angle_deg * M_PI / 180.0f;
-    float gx = cosf(angle_rad);
-    float gy = sinf(angle_rad);
+    // If nothing was covered, bail
+    if (!std::isfinite(min_t) || !std::isfinite(max_t))
+        return;
 
-    // Project corners to compute t-range
-    float min_t = INFINITY, max_t = -INFINITY;
-    for (int y = 0; y < s_height; y += supersample)
-    {
-        for (int x = 0; x < s_width; x += supersample)
-        {
-            float fx = (float)x / supersample;
-            float fy = (float)(s_height - y - 1) / supersample;
+    const float range_t = std::max(1e-6f, max_t - min_t);
 
-            float t = fx * gx + fy * gy;
-            min_t = std::min(min_t, t);
-            max_t = std::max(max_t, t);
-        }
-    }
-    float range_t = std::max(1e-6f, max_t - min_t);
-
-    // Downsample and blend
+    // 5) Downsample & blend into destination
     uint8_t* dst = buffer_info.bytes;
-    float inv_samples = 1.0f / (supersample * supersample);
+    const float inv_samples = 1.0f / (float)(supersample * supersample);
 
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            float sum = 0.0f;
-            float t_accum = 0.0f;
+            float sum_coverage = 0.0f;
+            float t_weighted   = 0.0f;
 
+            // Accumulate supersamples
             for (int sy = 0; sy < supersample; ++sy)
             {
+                const int cy = y * supersample + sy;
                 for (int sx = 0; sx < supersample; ++sx)
                 {
-                    int cx = x * supersample + sx;
-                    int cy = y * supersample + sy;
+                    const int cx = x * supersample + sx;
 
-                    float coverage_val = coverage[cx + cy * s_width];
-                    if (coverage_val > 0.0f)
+                    const float cov = coverage[cy * s_width + cx];
+                    if (cov > 0.0f)
                     {
-                        float fx = (float)cx / supersample + 0.5f / supersample;
-                        float fy = (float)(s_height - cy - 1) / supersample + 0.5f / supersample;
+                        const float fx = (float)cx * inv_ss + half_ss;
+                        const float fy = (float)(s_height - cy - 1) * inv_ss + half_ss;
 
-                        float t = (fx * gx + fy * gy - min_t) / range_t;
+                        float t = (fx * gx + fy * gy - min_t) / range_t; // normalize to [0..1] over the shape
                         t = clamp(t, 0.0f, 1.0f);
 
-                        t_accum += t * coverage_val;
-                        sum += coverage_val;
+                        t_weighted   += t * cov;
+                        sum_coverage += cov;
                     }
                 }
             }
 
-            float alpha = std::min(sum * inv_samples, 1.0f);
+            const float alpha = std::min(sum_coverage * inv_samples, 1.0f);
             if (alpha <= 0.0f)
                 continue;
 
-            float t = t_accum / (sum + 1e-6f);
+            const float t = t_weighted / (sum_coverage + 1e-6f);
 
-            uint8_t sr = static_cast<uint8_t>((1 - t) * r1 + t * r2);
-            uint8_t sg = static_cast<uint8_t>((1 - t) * g1 + t * g2);
-            uint8_t sb = static_cast<uint8_t>((1 - t) * b1 + t * b2);
-            uint8_t sa = static_cast<uint8_t>((1 - t) * a1 + t * a2);
-            sa = static_cast<uint8_t>(sa * alpha);
+            uint8_t sr = (uint8_t)((1.0f - t) * r1 + t * r2);
+            uint8_t sg = (uint8_t)((1.0f - t) * g1 + t * g2);
+            uint8_t sb = (uint8_t)((1.0f - t) * b1 + t * b2);
+            uint8_t sa = (uint8_t)((1.0f - t) * a1 + t * a2);
+
+            // Shape coverage -> effective output alpha
+            sa = (uint8_t)(sa * alpha);
 
             if (premul && sa < 255)
             {
-                float a_scale = sa / 255.0f;
-                sr = static_cast<uint8_t>(sr * a_scale);
-                sg = static_cast<uint8_t>(sg * a_scale);
-                sb = static_cast<uint8_t>(sb * a_scale);
+                const float a_scale = sa / 255.0f;
+                sr = (uint8_t)(sr * a_scale);
+                sg = (uint8_t)(sg * a_scale);
+                sb = (uint8_t)(sb * a_scale);
             }
 
-            int idx = (y * width + x) * channels;
+            const int idx = (y * width + x) * channels;
 
             if (channels == 4)
             {
-                float src_a = sa / 255.0f;
-                float inv_a = 1.0f - src_a;
+                const float src_a = sa / 255.0f;
+                const float inv_a = 1.0f - src_a;
 
-                uint8_t dst_r = dst[idx + 0];
-                uint8_t dst_g = dst[idx + 1];
-                uint8_t dst_b = dst[idx + 2];
-                uint8_t dst_a = dst[idx + 3];
+                const uint8_t dst_r = dst[idx + 0];
+                const uint8_t dst_g = dst[idx + 1];
+                const uint8_t dst_b = dst[idx + 2];
+                const uint8_t dst_a = dst[idx + 3];
 
-                dst[idx + 0] = static_cast<uint8_t>(sr * src_a + dst_r * inv_a);
-                dst[idx + 1] = static_cast<uint8_t>(sg * src_a + dst_g * inv_a);
-                dst[idx + 2] = static_cast<uint8_t>(sb * src_a + dst_b * inv_a);
-                dst[idx + 3] = static_cast<uint8_t>(sa + dst_a * inv_a);
+                dst[idx + 0] = (uint8_t)(sr * src_a + dst_r * inv_a);
+                dst[idx + 1] = (uint8_t)(sg * src_a + dst_g * inv_a);
+                dst[idx + 2] = (uint8_t)(sb * src_a + dst_b * inv_a);
+                dst[idx + 3] = (uint8_t)(sa + dst_a * inv_a);
             }
             else if (channels == 3)
             {
