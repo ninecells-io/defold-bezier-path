@@ -27,3 +27,9 @@ bool point_in_polygon(
     float y,
     const std::vector<std::pair<float, float>>& poly
 );
+
+void rasterize_polygon_to_coverage(
+    const std::vector<std::pair<float,float>>& poly,
+    std::vector<float>& coverage,
+    int supersample
+);

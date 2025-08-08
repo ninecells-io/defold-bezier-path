@@ -13,9 +13,6 @@ void draw_circle_cap(
     float cx, float cy, float dx, float dy, float radius,
     std::vector<float>& coverage, int supersample, int segments = 16
 ) {
-    const int s_width = buffer_info.width * supersample;
-    const int s_height = buffer_info.height * supersample;
-
     // Compute perpendicular vector
     float nx = -dy;
     float ny = dx;
@@ -36,20 +33,7 @@ void draw_circle_cap(
         arc_points.emplace_back(cx + x * radius, cy + y * radius);
     }
 
-    // Rasterize arc polygon into buffer
-    for (int y = 0; y < s_height; ++y)
-    {
-        for (int x = 0; x < s_width; ++x)
-        {
-            float fx = (float)x / supersample + 0.5f / supersample;
-            float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-
-            if (point_in_polygon(fx, fy, arc_points))
-            {
-                coverage[y * s_width + x] = 1.0f;
-            }
-        }
-    }
+    rasterize_polygon_to_coverage(arc_points, coverage, supersample);
 }
 
 // Stroke rendering with support for cap and join styles
@@ -60,8 +44,6 @@ void draw_stroke_cap(
     float nx = -dy;
     float ny = dx;
     const float half_w = width / 2.0f;
-    const int s_width = buffer_info.width * supersample;
-    const int s_height = buffer_info.height * supersample;
 
     if (cap_style == 1) // round
     {
@@ -79,16 +61,7 @@ void draw_stroke_cap(
             {cx + nx * half_w, cy + ny * half_w}
         };
 
-        for (int y = 0; y < s_height; ++y)
-        {
-            for (int x = 0; x < s_width; ++x)
-            {
-                float fx = (float)x / supersample + 0.5f / supersample;
-                float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-                if (point_in_polygon(fx, fy, cap))
-                    coverage[y * s_width + x] = 1.0f;
-            }
-        }
+        rasterize_polygon_to_coverage(cap,  coverage, supersample);
     }
 }
 
@@ -98,35 +71,19 @@ void draw_bevel_join(
     const std::pair<float,float>& b,
     std::vector<float>& coverage, int supersample
 ) {
-    const int s_width  = buffer_info.width  * supersample;
-    const int s_height = buffer_info.height * supersample;
-
-    std::vector<std::pair<float,float>> poly = { a, b, p }; // triangle
-    for (int y = 0; y < s_height; ++y)
-    {
-        for (int x = 0; x < s_width; ++x)
-        {
-            float fx = (float)x / supersample + 0.5f / supersample;
-            float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-            if (point_in_polygon(fx, fy, poly))
-                coverage[y * s_width + x] = 1.0f;
-        }
-    }
+    std::vector<std::pair<float,float>> tri = { a, b, p };
+    rasterize_polygon_to_coverage(tri, coverage, supersample);
 }
 
 void draw_round_join(
     const std::pair<float,float>& c,
     float r, float a0, float a1,
-    std::vector<float>& coverage, int supersample,
+    std::vector<float>& coverage,
+    int supersample,
     int segments = 16
 ) {
-    // Normalize sweep to go the short way *in the intended direction*.
-    // We assume a0->a1 is already chosen to be the exterior arc (see below).
-    const int s_width  = buffer_info.width  * supersample;
-    const int s_height = buffer_info.height * supersample;
-
-    std::vector<std::pair<float,float>> arc_pts;
-    arc_pts.emplace_back(c.first, c.second);
+    std::vector<std::pair<float,float>> arc_points;
+    arc_points.emplace_back(c.first, c.second);
 
     // Ensure consistent direction (CCW if a1 > a0, CW if a1 < a0)
     float sweep = a1 - a0;
@@ -139,19 +96,10 @@ void draw_round_join(
     {
         float t = (float)i / steps;
         float a = a0 + sweep * t;
-        arc_pts.emplace_back(c.first + cosf(a) * r, c.second + sinf(a) * r);
+        arc_points.emplace_back(c.first + cosf(a) * r, c.second + sinf(a) * r);
     }
 
-    for (int y = 0; y < s_height; ++y)
-    {
-        for (int x = 0; x < s_width; ++x)
-        {
-            float fx = (float)x / supersample + 0.5f / supersample;
-            float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-            if (point_in_polygon(fx, fy, arc_pts))
-                coverage[y * s_width + x] = 1.0f;
-        }
-    }
+    rasterize_polygon_to_coverage(arc_points, coverage, supersample);
 }
 
 // Draw a join at vertex p1 between segments (p0->p1) and (p1->p2).
@@ -167,6 +115,9 @@ inline void draw_join_at_vertex(
     std::vector<float>& coverage,
     int supersample
 ) {
+
+    printf("draw_join_at_vertex\n");
+
     // Directions of incoming and outgoing segments
     float v0x = p1.first  - p0.first;
     float v0y = p1.second - p0.second;
@@ -301,19 +252,9 @@ void stroke_path(
 
         std::vector<std::pair<float, float>> quad = { {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_} };
 
-        // Rasterize strip
-        for (int y = 0; y < s_height; ++y)
-        {
-            for (int x = 0; x < s_width; ++x)
-            {
-                float fx = (float)x / supersample + 0.5f / supersample;
-                float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-                if (point_in_polygon(fx, fy, quad))
-                    coverage[y * s_width + x] = 1.0f;
-            }
-        }
+        rasterize_polygon_to_coverage(quad, coverage, supersample);
 
-        // Caps (unchanged)
+        // Caps
         if (!path_closed)
         {
             if (i == 0) draw_stroke_cap(p0.first, p0.second, -dx, -dy, width, cap_style, coverage, supersample);
@@ -372,17 +313,7 @@ void stroke_path(
                 {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_}
             };
 
-            // Rasterize strip into coverage
-            for (int y = 0; y < s_height; ++y)
-            {
-                for (int x = 0; x < s_width; ++x)
-                {
-                    float fx = (float)x / supersample + 0.5f / supersample;
-                    float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-                    if (point_in_polygon(fx, fy, quad))
-                        coverage[y * s_width + x] = 1.0f;
-                }
-            }
+            rasterize_polygon_to_coverage(quad, coverage, supersample);
         }
 
         // And also draw the joins between the last segment and the first segment
