@@ -149,8 +149,11 @@ bool point_in_polygon(float x, float y, const std::vector<std::pair<float, float
         float xi = poly[i].first, yi = poly[i].second;
         float xj = poly[j].first, yj = poly[j].second;
 
-        bool intersect = ((yi > y) != (yj > y)) &&
-                         (x < (xj - xi) * (y - yi) / (yj - yi + 1e-6f) + xi);
+        bool intersect = (
+            (yi > y) != (yj > y)
+        ) && (
+            x < (xj - xi) * (y - yi) / (yj - yi + 1e-6f) + xi
+        );
         if (intersect)
             inside = !inside;
     }
