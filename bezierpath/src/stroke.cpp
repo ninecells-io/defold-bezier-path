@@ -241,7 +241,11 @@ void stroke_path(
 
     std::vector<std::pair<float, float>> flat_path;
     std::vector<uint8_t> corner_flags; // 1 = original corner (line-line or bezier endpoint), 0 = interior bezier sample
-    flatten_path(flat_path, 16, &corner_flags);
+
+    const float flatness_px = 0.25f;
+    const int   max_depth   = 10;
+
+    flatten_path(flat_path, flatness_px, max_depth, &corner_flags);
 
     const float half_w = width / 2.0f;
     const int supersample = 4;
@@ -477,7 +481,11 @@ void stroke_path_glow(float width, float radius, int position_mode, int r, int g
     // Flatten path like stroke_path
     std::vector<std::pair<float, float>> flat_path;
     std::vector<uint8_t> corner_flags;
-    flatten_path(flat_path, 16, &corner_flags);
+
+    const float flatness_px = 0.25f;
+    const int   max_depth   = 10;
+
+    flatten_path(flat_path, flatness_px, max_depth, &corner_flags);
     if (flat_path.size() < 2) return;
 
     // Distance helper (point -> segment)

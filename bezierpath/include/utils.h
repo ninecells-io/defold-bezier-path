@@ -17,7 +17,8 @@ T clamp(T val, T min_val, T max_val)
 
 void flatten_path(
     std::vector<std::pair<float, float>>& points,
-    int curve_segments = 16,
+    float tolerance_px = 0.25f,  // e.g. 0.25f
+    int   max_depth = 10,        // e.g. 10
     std::vector<uint8_t>* corner_flags_out = nullptr
 );
 
