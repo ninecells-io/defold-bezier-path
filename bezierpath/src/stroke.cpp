@@ -9,9 +9,10 @@
 #include "buffer.h"
 #include "stroke.h"
 
-void draw_circle_cap(float cx, float cy, float dx, float dy, float radius,
-                            std::vector<float>& coverage, int supersample, int segments = 16)
-{
+void draw_circle_cap(
+    float cx, float cy, float dx, float dy, float radius,
+    std::vector<float>& coverage, int supersample, int segments = 16
+) {
     const int s_width = buffer_info.width * supersample;
     const int s_height = buffer_info.height * supersample;
 
@@ -52,9 +53,10 @@ void draw_circle_cap(float cx, float cy, float dx, float dy, float radius,
 }
 
 // Stroke rendering with support for cap and join styles
-void draw_stroke_cap(float cx, float cy, float dx, float dy, float width, int cap_style,
-                             std::vector<float>& coverage, int supersample)
-{
+void draw_stroke_cap(
+    float cx, float cy, float dx, float dy, float width, int cap_style,
+    std::vector<float>& coverage, int supersample
+) {
     float nx = -dy;
     float ny = dx;
     const float half_w = width / 2.0f;
@@ -90,11 +92,12 @@ void draw_stroke_cap(float cx, float cy, float dx, float dy, float width, int ca
     }
 }
 
-void draw_bevel_join(const std::pair<float,float>& p,
-                            const std::pair<float,float>& a,
-                            const std::pair<float,float>& b,
-                            std::vector<float>& coverage, int supersample)
-{
+void draw_bevel_join(
+    const std::pair<float,float>& p,
+    const std::pair<float,float>& a,
+    const std::pair<float,float>& b,
+    std::vector<float>& coverage, int supersample
+) {
     const int s_width  = buffer_info.width  * supersample;
     const int s_height = buffer_info.height * supersample;
 
@@ -111,11 +114,12 @@ void draw_bevel_join(const std::pair<float,float>& p,
     }
 }
 
-void draw_round_join(const std::pair<float,float>& c,
-                            float r, float a0, float a1,
-                            std::vector<float>& coverage, int supersample,
-                            int segments = 16)
-{
+void draw_round_join(
+    const std::pair<float,float>& c,
+    float r, float a0, float a1,
+    std::vector<float>& coverage, int supersample,
+    int segments = 16
+) {
     // Normalize sweep to go the short way *in the intended direction*.
     // We assume a0->a1 is already chosen to be the exterior arc (see below).
     const int s_width  = buffer_info.width  * supersample;
@@ -130,12 +134,6 @@ void draw_round_join(const std::pair<float,float>& c,
     if (sweep < -M_PI) sweep += 2.0f * M_PI;
 
     int steps = std::max(segments, 4);
-
-    printf("steps=%d\n", steps);
-    printf("s_height=%d\n", s_height);
-    printf("s_width=%d\n", s_width);
-
-
 
     for (int i = 0; i <= steps; ++i)
     {
@@ -157,118 +155,82 @@ void draw_round_join(const std::pair<float,float>& c,
 }
 
 // Draw a join at vertex p1 between segments (p0->p1) and (p1->p2).
-// Handles Defold's Y-down by doing the vector/angle math in a mirrored Y-up "math space".
-inline void draw_join_at_vertex(const std::pair<float,float>& p0,
-                                       const std::pair<float,float>& p1,
-                                       const std::pair<float,float>& p2,
-                                       float offset_in, float offset_out,
-                                       int join_style,
-                                       std::vector<float>& coverage, int supersample)
-{
-    // --- Step 1: Mirror Y into math space (Y-up) for geometry calculations ---
-    auto mirrorY = [](const std::pair<float,float>& p) {
-        return std::pair<float,float>(p.first, -p.second);
-    };
-    auto P0 = mirrorY(p0);
-    auto P1 = mirrorY(p1);
-    auto P2 = mirrorY(p2);
+// Uses the same left-normal convention nx=-dy, ny=dx as elsewhere.
+// For a left-turn we join on the "left/outside" using offset_out.
+// For a right-turn we join on the "right/outside" using offset_in.
+inline void draw_join_at_vertex(
+    const std::pair<float,float>& p0,
+    const std::pair<float,float>& p1,
+    const std::pair<float,float>& p2,
+    float offset_in, float offset_out,
+    int join_style,
+    std::vector<float>& coverage,
+    int supersample
+) {
+    // Directions of incoming and outgoing segments
+    float v0x = p1.first  - p0.first;
+    float v0y = p1.second - p0.second;
+    float v1x = p2.first  - p1.first;
+    float v1y = p2.second - p1.second;
 
-    // --- Step 2: Compute unit directions in Y-up space ---
-    float v1x = P1.first - P0.first;
-    float v1y = P1.second - P0.second;
-    float L1  = std::hypot(v1x, v1y);
-    if (L1 == 0.0f) return;
-    v1x /= L1; v1y /= L1;
+    float len0 = std::hypot(v0x, v0y);
+    float len1 = std::hypot(v1x, v1y);
+    if (len0 <= 0.0f || len1 <= 0.0f) return;
 
-    float v2x = P2.first - P1.first;
-    float v2y = P2.second - P1.second;
-    float L2  = std::hypot(v2x, v2y);
-    if (L2 == 0.0f) return;
-    v2x /= L2; v2y /= L2;
+    v0x /= len0; v0y /= len0;
+    v1x /= len1; v1y /= len1;
 
-    // --- Step 3: Normals in Y-up space ---
+    // Left normals for each segment (consistent with the rest of the codebase)
+    float n0x = -v0y, n0y =  v0x;
     float n1x = -v1y, n1y =  v1x;
-    float n2x = -v2y, n2y =  v2x;
 
-    // --- Step 4: Determine turn direction in Y-up space ---
-    float cross_val = v1x * v2y - v1y * v2x;
-    if (fabsf(cross_val) < 1e-6f)
-        return; // collinear segments → no join
-    bool left_turn = (cross_val < 0.0f);
+    // Cross product to determine turning direction at the corner
+    // (sign convention matches our vector math space used everywhere else)
+    float cross = v0x * v1y - v0y * v1x;
 
-    // --- Step 5: Convert normals back to Y-down for polygon coords ---
-    auto toWorld = [](float nx, float ny) {
-        return std::pair<float,float>(nx, -ny);
-    };
+    // Choose which side is the *exterior* of the bend and corresponding radius
+    bool left_turn = (cross < 0.0f);
 
+    // Outer points at the corner on each offset edge
+    std::pair<float,float> A, B;   // endpoints of the wedge on the exterior side
+    float radius = 0.0f;
+    float a0 = 0.0f, a1 = 0.0f;    // angles for round join
 
-        printf("left_turn=%d\n", left_turn);
-        printf("join_style=%d\n", join_style);
-
-    if (join_style == JOIN_BEVEL)
-    {
-        if (left_turn && offset_out > 0.0f)
-        {
-            auto N1 = toWorld(n1x, n1y);
-            auto N2 = toWorld(n2x, n2y);
-            draw_bevel_join(p1,
-                { p1.first + N1.first * offset_out, p1.second + N1.second * offset_out },
-                { p1.first + N2.first * offset_out, p1.second + N2.second * offset_out },
-                coverage, supersample);
-        }
-        else if (!left_turn && offset_in > 0.0f)
-        {
-            auto N1 = toWorld(-n1x, -n1y);
-            auto N2 = toWorld(-n2x, -n2y);
-            draw_bevel_join(p1,
-                { p1.first + N1.first * offset_in, p1.second + N1.second * offset_in },
-                { p1.first + N2.first * offset_in, p1.second + N2.second * offset_in },
-                coverage, supersample);
-        }
-        return;
+    if (left_turn) {
+        if (offset_out <= 0.0f) return; // nothing to draw on this side
+        radius = offset_out;
+        A = { p1.first + n0x * offset_out, p1.second + n0y * offset_out };
+        B = { p1.first + n1x * offset_out, p1.second + n1y * offset_out };
+        // Arc goes along the circle of normals on the left side
+        a0 = std::atan2(n0y, n0x);
+        a1 = std::atan2(n1y, n1x);
+    } else {
+        if (offset_in <= 0.0f) return; // nothing to draw on this side
+        radius = offset_in;
+        // Right side is the negative of the left normal
+        A = { p1.first - n0x * offset_in, p1.second - n0y * offset_in };
+        B = { p1.first - n1x * offset_in, p1.second - n1y * offset_in };
+        // Use the right-side normals (i.e., -n) for the arc angles
+        a0 = std::atan2(-n0y, -n0x);
+        a1 = std::atan2(-n1y, -n1x);
     }
 
-    if (join_style == JOIN_ROUND)
-    {
-        auto normalise_ccw = [&](float a0, float a1) {
-            while (a1 <= a0) a1 += M_PI_2;
-            return std::make_pair(a0, a1);
-        };
-        auto normalise_cw = [&](float a0, float a1) {
-            while (a1 >= a0) a1 -= M_PI_2;
-            return std::make_pair(a0, a1);
-        };
-        auto flipY_angle = [&](float a) {
-            return -a; // Y-up → Y-down
-        };
-
-        if (left_turn && offset_out > 0.0f)
-        {
-printf("offset_out=%f\n", offset_out);
-            float a0 = atan2f(n1y, n1x);
-            float a1 = atan2f(n2y, n2x);
-            auto angs = normalise_ccw(a0, a1);
-            draw_round_join(p1, offset_out,
-                            flipY_angle(angs.first), flipY_angle(angs.second),
-                            coverage, supersample);
-        }
-        else if (!left_turn && offset_in > 0.0f)
-        {
-printf("offset_in=%f\n", offset_in);
-            float m1x = -n1x, m1y = -n1y;
-            float m2x = -n2x, m2y = -n2y;
-            float a0 = atan2f(m1y, m1x);
-            float a1 = atan2f(m2y, m2x);
-            auto angs = normalise_cw(a0, a1);
-            draw_round_join(p1, offset_in,
-                            flipY_angle(angs.first), flipY_angle(angs.second),
-                            coverage, supersample);
-        }
+    if (join_style == JOIN_BEVEL) {
+        // Simple triangle between the two exterior offset endpoints and the vertex.
+        // (The strip fill from the segments covers the rest.)
+        draw_bevel_join(p1, A, B, coverage, supersample);
+    } else if (join_style == JOIN_ROUND) {
+        // Exterior arc centered at the vertex, radius = chosen exterior offset.
+        // draw_round_join will normalize sweep to the shortest path while keeping direction.
+        draw_round_join(p1, radius, a0, a1, coverage, supersample);
     }
 }
 
-void stroke_path(float width, int position_mode, int r, int g, int b, int a, int cap_style, int join_style)
-{
+void stroke_path(
+    float width, int position_mode,
+    int r, int g, int b, int a,
+    int cap_style, int join_style
+) {
     const int img_w = buffer_info.width;
     const int img_h = buffer_info.height;
     const int channels = buffer_info.channels;
@@ -336,7 +298,7 @@ void stroke_path(float width, int position_mode, int r, int g, int b, int a, int
         std::vector<std::pair<float, float>> quad = { {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_} };
 
         // Rasterize strip
-        /*for (int y = 0; y < s_height; ++y)
+        for (int y = 0; y < s_height; ++y)
         {
             for (int x = 0; x < s_width; ++x)
             {
@@ -345,7 +307,7 @@ void stroke_path(float width, int position_mode, int r, int g, int b, int a, int
                 if (point_in_polygon(fx, fy, quad))
                     coverage[y * s_width + x] = 1.0f;
             }
-        }*/
+        }
 
         // Caps (unchanged)
         if (!path_closed)
