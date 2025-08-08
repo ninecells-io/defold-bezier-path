@@ -23,5 +23,5 @@ shared_state = 1
 texture_profiles = /builtins/graphics/default.texture_profiles
 
 [library]
-include_dirs = bezierppath
+include_dirs = bezierpath
 
