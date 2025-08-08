@@ -82,7 +82,7 @@ void fill_shadow(int offset_x, int offset_y, int blur_radius, int r, int g, int 
         for (int x = 0; x < width; ++x)
         {
             float fx = x + 0.5f;
-            float fy = (height - y - 1) + 0.5f;
+            float fy = y + 0.5f;
 
             if (point_in_polygon(fx, fy, flat_path))
             {

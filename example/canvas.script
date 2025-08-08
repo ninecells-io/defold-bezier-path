@@ -33,12 +33,34 @@ function init(self)
 
     m.fill_color(self.buffer_info, m.rgbaToColor(100, 100, 100, 128)) -- Semi-transparent grey
 
-    m.rounded_rect(20, 20, 350, 250, 32)
+    m.rounded_rect(20, 20, 300, 250, 32)
     m.fill_path_gradient(
         self.buffer_info,
-        m.rgbaToColor(255, 0, 0, 255),
-        m.rgbaToColor(0, 0, 255, 255),
+        m.rgbaToColor(150, 150, 150, 255),
+        m.rgbaToColor(150, 150, 150, 255),
         45
+    )
+
+    m.rounded_rect(100, 60, 300, 250, 32)
+    m.fill_shadow(self.buffer_info, 0, 0, 20, m.rgbaToColor(0, 0, 0, 200))
+    m.fill_path_gradient(
+        self.buffer_info,
+        m.rgbaToColor(255, 0, 0, 200),
+        m.rgbaToColor(0, 0, 255, 200),
+        45
+    )
+
+    m.rounded_rect(240, 240, 200, 55, 16)
+    m.fill_shadow(self.buffer_info, 0, 0, 10, m.rgbaToColor(0, 0, 0, 222))
+    m.fill_path(
+        self.buffer_info,
+        m.rgbaToColor(0, 255, 0, 150)
+    )
+    m.stroke_path(
+        self.buffer_info,
+        2,
+        m.rgbaToColor(0, 0, 0, 80),
+        "center", "round", "round"
     )
 
     --[[

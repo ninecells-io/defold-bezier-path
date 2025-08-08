@@ -80,6 +80,4 @@ function M.stroke_path_glow(buffer_info, width, radius, position, color)
     bezierpath.stroke_path_glow(buffer_info, width, radius, position, color.r, color.g, color.b, color.a)
 end
 
-
-
 return M
