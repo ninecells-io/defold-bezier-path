@@ -61,18 +61,24 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
     }
 }
 
-void fill_shadow(int offset_x, int offset_y, int blur_radius, int r, int g, int b, int a)
-{
+void fill_shadow(
+    const BufferInfo& buffer_info,
+    int offset_x, int offset_y,
+    int blur_radius,
+    int r, int g, int b, int a
+) {
     const int width = buffer_info.width;
     const int height = buffer_info.height;
     const int channels = buffer_info.channels;
     const bool premul = buffer_info.premultiply_alpha;
 
-    if (g_path_points.empty())
+    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+
+    if (!path_points || path_points->points.empty())
         return;
 
     std::vector<std::pair<float, float>> flat_path;
-    flatten_path(flat_path);
+    flatten_path(path_points->points, flat_path);
 
     std::vector<float> mask(width * height, 0.0f);
 

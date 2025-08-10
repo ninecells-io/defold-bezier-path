@@ -5,17 +5,23 @@ bezierpath = {}
 ---Fill the buffer with given color
 function bezierpath.fill_color(buffer_info, red, green, blue, alpha) end
 
+--Create a new entry in path record and return handle
+function bezierpath.create_path() end
+
+--Delete path record
+function bezierpath.delete_path(handle) end
+
 --Resets the current path array
-function bezierpath.reset_path() end
+function bezierpath.reset_path(handle) end
 
 --Add a point to the path
-function bezierpath.add_point(x, y) end
+function bezierpath.add_point(handle, x, y) end
 
 --Add a bezier point to the path
-function bezierpath.add_bezier_point(x, y, cx, cy) end
+function bezierpath.add_bezier_point(handle, x, y, cx, cy) end
 
 --Set if the path is closed
-function bezierpath.set_path_closed(closed) end
+function bezierpath.set_path_closed(handle, closed) end
 
 --Fill the current path with given color
 function bezierpath.fill_path(buffer_info, red, green, blue, alpha) end

@@ -7,12 +7,15 @@ function init(self)
     local height = 512
     local channels = 4
 
+    local handle = m.create_path()
+
     -- we have to create table with next fields: buffer, width, height, channels
     self.buffer_info = {
         buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = channels}}),
         width = width,
         height = height,
-        channels = channels -- 3 for rgb, 4 for rgba
+        channels = channels, -- 3 for rgb, 4 for rgba
+        path_handle = handle
     }
     self.dirty = false
     self.current_color = vmath.vector4(0, 0, 0, 1)
@@ -33,7 +36,7 @@ function init(self)
 
     m.fill_color(self.buffer_info, m.rgbaToColor(100, 100, 100, 128)) -- Semi-transparent grey
 
-    m.rounded_rect(20, 20, 300, 250, 32)
+    m.rounded_rect(handle, 20, 20, 300, 250, 32)
     m.fill_path_gradient(
         self.buffer_info,
         m.rgbaToColor(150, 150, 150, 255),
@@ -41,7 +44,7 @@ function init(self)
         45
     )
 
-    m.rounded_rect(100, 60, 300, 250, 32)
+    m.rounded_rect(handle, 100, 60, 300, 250, 32)
     m.fill_shadow(self.buffer_info, m.zero(), 20, m.black(200))
     m.fill_path_gradient(
         self.buffer_info,
@@ -50,10 +53,10 @@ function init(self)
         45
     )
 
-    m.line(m.point(110, 120), m.point(390, 120))
+    m.line(handle, m.point(110, 120), m.point(390, 120))
     m.stroke_path(self.buffer_info, 4, m.white(200), "center", "round")
 
-    m.rounded_rect(240, 240, 200, 55, 16)
+    m.rounded_rect(handle, 240, 240, 200, 55, 16)
     m.fill_shadow(self.buffer_info, m.zero(), 10, m.rgbaToColor(0, 0, 0, 222))
     m.fill_path(
         self.buffer_info,
@@ -66,7 +69,7 @@ function init(self)
         "center", "round", "round"
     )
 
-    m.polygon({
+    m.polygon(handle, {
         m.point(100, 500),
         m.point(200, 400),
         m.point(300, 500),
@@ -78,6 +81,8 @@ function init(self)
    
     
     resource.set_texture(self.resource_path, self.header, self.buffer_info.buffer)
+
+    m.delete_path(handle)
 end
 
 function update(self, dt)

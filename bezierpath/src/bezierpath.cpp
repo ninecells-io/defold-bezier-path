@@ -23,7 +23,7 @@
 static int fill_color_lua(lua_State *L)
 {
     int top = lua_gettop(L);
-    read_and_validate_buffer_info(L, 1);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
     int32_t r = luaL_checknumber(L, 2);
     int32_t g = luaL_checknumber(L, 3);
     int32_t b = luaL_checknumber(L, 4);
@@ -38,7 +38,7 @@ static int fill_color_lua(lua_State *L)
         return 0;
     }
 
-    fill_color(r, g, b, a);
+    fill_color(buffer_info, r, g, b, a);
 
     assert(top == lua_gettop(L));
     return 0;
@@ -47,9 +47,13 @@ static int fill_color_lua(lua_State *L)
 static int reset_path_lua(lua_State* L)
 {
     int top = lua_gettop(L);
+    int32_t path_handle = luaL_checknumber(L, 1);
 
-    path_closed = false;
-    g_path_points.clear();
+    PathPointList* path_points = get_path_points(path_handle);
+    if (path_points) {
+        path_points->points.clear();
+        path_points->is_closed = false;
+    }
 
     assert(top == lua_gettop(L));
     return 0;
@@ -59,8 +63,9 @@ static int add_point_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    float x = luaL_checknumber(L, 1);
-    float y = luaL_checknumber(L, 2);
+    int32_t path_handle = luaL_checknumber(L, 1);
+    float x = luaL_checknumber(L, 2);
+    float y = luaL_checknumber(L, 3);
 
     PathPoint p;
     p.type = POINT_TYPE_LINEAR;
@@ -69,7 +74,10 @@ static int add_point_lua(lua_State* L)
     p.cx = 0.0f;
     p.cy = 0.0f;
 
-    g_path_points.push_back(p);
+    PathPointList* path_points = get_path_points(path_handle);
+    if (path_points) {
+        path_points->points.push_back(p);
+    }
 
     assert(top == lua_gettop(L));
     return 0;
@@ -79,10 +87,11 @@ static int add_bezier_point_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    float x = luaL_checknumber(L, 1);
-    float y = luaL_checknumber(L, 2);
-    float cx = luaL_checknumber(L, 3);
-    float cy = luaL_checknumber(L, 4);
+    int32_t path_handle = luaL_checknumber(L, 1);
+    float x = luaL_checknumber(L, 2);
+    float y = luaL_checknumber(L, 3);
+    float cx = luaL_checknumber(L, 4);
+    float cy = luaL_checknumber(L, 5);
 
     PathPoint p;
     p.type = POINT_TYPE_BEZIER;
@@ -91,7 +100,10 @@ static int add_bezier_point_lua(lua_State* L)
     p.cx = cx;
     p.cy = cy;
 
-    g_path_points.push_back(p);
+    PathPointList* path_points = get_path_points(path_handle);
+    if (path_points) {
+        path_points->points.push_back(p);
+    }
 
     assert(top == lua_gettop(L));
     return 0;
@@ -100,8 +112,12 @@ static int add_bezier_point_lua(lua_State* L)
 static int set_path_closed_lua(lua_State* L)
 {
     int top = lua_gettop(L);
+    int32_t path_handle = luaL_checknumber(L, 1);
 
-    path_closed = lua_toboolean(L, 1);
+    PathPointList* path_points = get_path_points(path_handle);
+    if (path_points) {
+        path_points->is_closed = lua_toboolean(L, 2);
+    }
 
     assert(top == lua_gettop(L));
     return 0;
@@ -112,13 +128,13 @@ static int fill_path_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    read_and_validate_buffer_info(L, 1);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
     int r = luaL_checknumber(L, 2);
     int g = luaL_checknumber(L, 3);
     int b = luaL_checknumber(L, 4);
     int a = luaL_optnumber(L, 5, 255);
 
-    fill_path(r, g, b, a);
+    fill_path(buffer_info, r, g, b, a);
 
     assert(top == lua_gettop(L));
     return 0;
@@ -128,7 +144,7 @@ static int fill_path_gradient_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    read_and_validate_buffer_info(L, 1);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
 
     int r1 = luaL_checknumber(L, 2);
     int g1 = luaL_checknumber(L, 3);
@@ -142,7 +158,7 @@ static int fill_path_gradient_lua(lua_State* L)
 
     float angle_deg = luaL_checknumber(L, 10);
 
-    fill_path_gradient(r1, g1, b1, a1, r2, g2, b2, a2, angle_deg);
+    fill_path_gradient(buffer_info, r1, g1, b1, a1, r2, g2, b2, a2, angle_deg);
 
     assert(top == lua_gettop(L));
     return 0;
@@ -152,7 +168,7 @@ static int fill_shadow_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    read_and_validate_buffer_info(L, 1);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
 
     int offset_x = luaL_checknumber(L, 2);
     int offset_y = luaL_checknumber(L, 3);
@@ -163,7 +179,7 @@ static int fill_shadow_lua(lua_State* L)
     int b = luaL_checknumber(L, 7);
     int a = luaL_checknumber(L, 8);
 
-    fill_shadow(offset_x, offset_y, radius, r, g, b, a);
+    fill_shadow(buffer_info, offset_x, offset_y, radius, r, g, b, a);
 
     assert(top == lua_gettop(L));
     return 0;
@@ -173,7 +189,7 @@ static int stroke_path_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    read_and_validate_buffer_info(L, 1);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
 
     float stroke_width = luaL_checknumber(L, 2);
     int r = luaL_checknumber(L, 3);
@@ -214,7 +230,7 @@ static int stroke_path_lua(lua_State* L)
         else if (strcmp(join, "miter") != 0) return luaL_error(L, "Invalid join style: %s", join);
     }
 
-    stroke_path(stroke_width, position, r, g, b, a, cap_style, join_style);
+    stroke_path(buffer_info, stroke_width, position, r, g, b, a, cap_style, join_style);
 
     assert(top == lua_gettop(L));
     return 0;
@@ -224,7 +240,7 @@ static int stroke_path_glow_lua(lua_State* L)
 {
     int top = lua_gettop(L);
 
-    read_and_validate_buffer_info(L, 1);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
 
     float stroke_width = luaL_checknumber(L, 2);
     float radius = luaL_checknumber(L, 3);
@@ -248,25 +264,43 @@ static int stroke_path_glow_lua(lua_State* L)
         }
     }
 
-    stroke_path_glow(stroke_width, radius, position, r, g, b, a);
+    stroke_path_glow(buffer_info, stroke_width, radius, position, r, g, b, a);
 
+    assert(top == lua_gettop(L));
+    return 0;
+}
+
+static int create_path_lua(lua_State* L) {
+    DM_LUA_STACK_CHECK(L, 1);
+    const int handle = create_path();
+    lua_pushinteger(L, handle);
+    return 1;
+}
+
+static int delete_path_lua(lua_State* L) {
+    int top = lua_gettop(L);
+    int handle = luaL_checknumber(L, 1);
+    delete_path(handle);
     assert(top == lua_gettop(L));
     return 0;
 }
 
 // Functions exposed to Lua
 static const luaL_reg Module_methods[] = {
-        {"fill_color", fill_color_lua},
-        {"reset_path", reset_path_lua},
-        {"add_point", add_point_lua},
-        {"add_bezier_point", add_bezier_point_lua},
-        {"set_path_closed", set_path_closed_lua},
-        {"fill_path", fill_path_lua},
-        {"fill_path_gradient", fill_path_gradient_lua},
-        {"fill_shadow", fill_shadow_lua},
-        {"stroke_path", stroke_path_lua},
-        {"stroke_path_glow", stroke_path_glow_lua},
-        {0, 0}};
+    {"fill_color", fill_color_lua},
+    {"create_path", create_path_lua},
+    {"delete_path", delete_path_lua},
+    {"reset_path", reset_path_lua},
+    {"add_point", add_point_lua},
+    {"add_bezier_point", add_bezier_point_lua},
+    {"set_path_closed", set_path_closed_lua},
+    {"fill_path", fill_path_lua},
+    {"fill_path_gradient", fill_path_gradient_lua},
+    {"fill_shadow", fill_shadow_lua},
+    {"stroke_path", stroke_path_lua},
+    {"stroke_path_glow", stroke_path_glow_lua},
+    {0, 0}
+};
 
 static void LuaInit(lua_State *L)
 {

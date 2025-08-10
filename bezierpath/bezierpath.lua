@@ -43,21 +43,21 @@ function M.black(alpha)
 end
 
 --Adds points based on points table
-function M.polygon(points, closed)
-    bezierpath.reset_path()
+function M.polygon(handle, points, closed)
+    bezierpath.reset_path(handle)
     for _, point in pairs(points) do
         if (point.cx ~= nil) then
-            bezierpath.add_bezier_point(point.x, point.y, point.cx, point.cy)
+            bezierpath.add_bezier_point(handle, point.x, point.y, point.cx, point.cy)
         else
-            bezierpath.add_point(point.x, point.y)
+            bezierpath.add_point(handle, point.x, point.y)
         end
     end
-    bezierpath.set_path_closed(closed or false)
+    bezierpath.set_path_closed(handle, closed or false)
 end
 
 --Draws a rounded rect into the point buffer, can be filled with fill_path, stroke_path, ...
-function M.rounded_rect(left, top, width, height, edge_radius)
-    M.polygon({
+function M.rounded_rect(handle, left, top, width, height, edge_radius)
+    M.polygon(handle, {
         M.point(left + width - edge_radius, top),
         M.bezierPoint(M.point(left + width, top + edge_radius), M.point(left + width, top)),
         M.point(left + width, top + height - edge_radius),
@@ -69,11 +69,11 @@ function M.rounded_rect(left, top, width, height, edge_radius)
     }, true)
 end
 
-function M.line(point1, point2)
-    bezierpath.reset_path()
-    bezierpath.add_point(point1.x, point1.y)
-    bezierpath.add_point(point2.x, point2.y)
-    bezierpath.set_path_closed(false)
+function M.line(handle, point1, point2)
+    bezierpath.reset_path(handle)
+    bezierpath.add_point(handle, point1.x, point1.y)
+    bezierpath.add_point(handle, point2.x, point2.y)
+    bezierpath.set_path_closed(handle, false)
 end
 
 --LOW LEVEL ACCESS
@@ -82,23 +82,31 @@ function M.fill_color(buffer_info, color)
     bezierpath.fill_color(buffer_info, color.r, color.g, color.b, color.a)
 end
 
-function M.reset_path()
-    bezierpath.reset_path()
+function M.create_path()
+    return bezierpath.create_path()
+end
+
+function M.delete_path(handle)
+    bezierpath.delete_path()
+end
+
+function M.reset_path(handle)
+    bezierpath.reset_path(handle)
 end
 
 --Add a point to the path
-function M.add_point(point)
-    bezierpath.add_point(point.x, point.y)
+function M.add_point(handle, point)
+    bezierpath.add_point(handle, point.x, point.y)
 end
 
 --Add a bezier point to the path
-function M.add_bezier_point(point, controlPoint)
-    bezierpath.add_bezier_point(point.x, point.y, controlPoint.x, controlPoint.y)
+function M.add_bezier_point(handle, point, controlPoint)
+    bezierpath.add_bezier_point(handle, point.x, point.y, controlPoint.x, controlPoint.y)
 end
 
 --Set if the path is closed
-function M.set_path_closed(closed)
-    bezierpath.set_path_closed(closed)
+function M.set_path_closed(handle, closed)
+    bezierpath.set_path_closed(handle, closed)
 end
 
 --Fill the current path with given color

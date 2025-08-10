@@ -12,8 +12,8 @@
 static inline float distance_point_to_line(
     float px, float py,
     float ax, float ay,
-    float bx, float by)
-{
+    float bx, float by
+) {
     float vx = bx - ax, vy = by - ay;
     float wx = px - ax, wy = py - ay;
     float len = std::hypot(vx, vy);
@@ -70,6 +70,7 @@ static void flatten_quadratic_adaptive(
 }
 
 void flatten_path(
+    const std::vector<PathPoint>& path,
     std::vector<std::pair<float, float>>& points,
     float tolerance_px,            // e.g. 0.25f
     int   max_depth,               // e.g. 10
@@ -77,13 +78,13 @@ void flatten_path(
 ) {
     points.clear();
     if (corner_flags_out) corner_flags_out->clear();
-    if (g_path_points.empty()) return;
+    if (path.empty()) return;
 
-    const size_t n = g_path_points.size();
+    const size_t n = path.size();
     for (size_t i = 0; i < n; ++i)
     {
-        const PathPoint& p0 = g_path_points[i];
-        const PathPoint& p1 = g_path_points[(i + 1) % n];
+        const PathPoint& p0 = path[i];
+        const PathPoint& p1 = path[(i + 1) % n];
 
         if (p1.type == POINT_TYPE_LINEAR)
         {
@@ -106,6 +107,7 @@ void flatten_path(
 }
 
 void rasterize_polygon_to_coverage(
+    const BufferInfo& buffer_info,
     const std::vector<std::pair<float,float>>& poly,
     std::vector<float>& coverage,
     int supersample
@@ -139,8 +141,9 @@ void rasterize_polygon_to_coverage(
     }
 }
 
-bool point_in_polygon(float x, float y, const std::vector<std::pair<float, float>>& poly)
-{
+bool point_in_polygon(
+    float x, float y, const std::vector<std::pair<float, float>>& poly
+) {
     bool inside = false;
     size_t n = poly.size();
 

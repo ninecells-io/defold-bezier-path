@@ -8,6 +8,7 @@
 #define M_PI_2 6.2831853071795864769f
 #endif
 
+#include "buffer.h"
 
 template <typename T>
 T clamp(T val, T min_val, T max_val)
@@ -16,6 +17,7 @@ T clamp(T val, T min_val, T max_val)
 }
 
 void flatten_path(
+    const std::vector<PathPoint>& path,
     std::vector<std::pair<float, float>>& points,
     float tolerance_px = 0.25f,  // e.g. 0.25f
     int   max_depth = 10,        // e.g. 10
@@ -29,6 +31,7 @@ bool point_in_polygon(
 );
 
 void rasterize_polygon_to_coverage(
+    const BufferInfo& buffer_info,
     const std::vector<std::pair<float,float>>& poly,
     std::vector<float>& coverage,
     int supersample

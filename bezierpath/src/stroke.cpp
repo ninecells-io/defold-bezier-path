@@ -10,6 +10,7 @@
 #include "stroke.h"
 
 void draw_circle_cap(
+    const BufferInfo& buffer_info,
     float cx, float cy, float dx, float dy, float radius,
     std::vector<float>& coverage, int supersample, int segments = 16
 ) {
@@ -33,11 +34,12 @@ void draw_circle_cap(
         arc_points.emplace_back(cx + x * radius, cy + y * radius);
     }
 
-    rasterize_polygon_to_coverage(arc_points, coverage, supersample);
+    rasterize_polygon_to_coverage(buffer_info, arc_points, coverage, supersample);
 }
 
 // Stroke rendering with support for cap and join styles
 void draw_stroke_cap(
+    const BufferInfo& buffer_info,
     float cx, float cy, float dx, float dy, float width, int cap_style,
     std::vector<float>& coverage, int supersample
 ) {
@@ -47,7 +49,7 @@ void draw_stroke_cap(
 
     if (cap_style == 1) // round
     {
-        draw_circle_cap(cx, cy, dx, dy, half_w, coverage, supersample);
+        draw_circle_cap(buffer_info, cx, cy, dx, dy, half_w, coverage, supersample);
     }
     else if (cap_style == 2) // square
     {
@@ -61,21 +63,23 @@ void draw_stroke_cap(
             {cx + nx * half_w, cy + ny * half_w}
         };
 
-        rasterize_polygon_to_coverage(cap,  coverage, supersample);
+        rasterize_polygon_to_coverage(buffer_info, cap,  coverage, supersample);
     }
 }
 
 void draw_bevel_join(
+    const BufferInfo& buffer_info,
     const std::pair<float,float>& p,
     const std::pair<float,float>& a,
     const std::pair<float,float>& b,
     std::vector<float>& coverage, int supersample
 ) {
     std::vector<std::pair<float,float>> tri = { a, b, p };
-    rasterize_polygon_to_coverage(tri, coverage, supersample);
+    rasterize_polygon_to_coverage(buffer_info, tri, coverage, supersample);
 }
 
 void draw_round_join(
+    const BufferInfo& buffer_info,
     const std::pair<float,float>& c,
     float r, float a0, float a1,
     std::vector<float>& coverage,
@@ -99,7 +103,7 @@ void draw_round_join(
         arc_points.emplace_back(c.first + cosf(a) * r, c.second + sinf(a) * r);
     }
 
-    rasterize_polygon_to_coverage(arc_points, coverage, supersample);
+    rasterize_polygon_to_coverage(buffer_info, arc_points, coverage, supersample);
 }
 
 // Draw a join at vertex p1 between segments (p0->p1) and (p1->p2).
@@ -107,6 +111,7 @@ void draw_round_join(
 // For a left-turn we join on the "left/outside" using offset_out.
 // For a right-turn we join on the "right/outside" using offset_in.
 inline void draw_join_at_vertex(
+    const BufferInfo& buffer_info,
     const std::pair<float,float>& p0,
     const std::pair<float,float>& p1,
     const std::pair<float,float>& p2,
@@ -115,8 +120,6 @@ inline void draw_join_at_vertex(
     std::vector<float>& coverage,
     int supersample
 ) {
-
-    printf("draw_join_at_vertex\n");
 
     // Directions of incoming and outgoing segments
     float v0x = p1.first  - p0.first;
@@ -169,15 +172,16 @@ inline void draw_join_at_vertex(
     if (join_style == JOIN_BEVEL) {
         // Simple triangle between the two exterior offset endpoints and the vertex.
         // (The strip fill from the segments covers the rest.)
-        draw_bevel_join(p1, A, B, coverage, supersample);
+        draw_bevel_join(buffer_info, p1, A, B, coverage, supersample);
     } else if (join_style == JOIN_ROUND) {
         // Exterior arc centered at the vertex, radius = chosen exterior offset.
         // draw_round_join will normalize sweep to the shortest path while keeping direction.
-        draw_round_join(p1, radius, a0, a1, coverage, supersample);
+        draw_round_join(buffer_info, p1, radius, a0, a1, coverage, supersample);
     }
 }
 
 void stroke_path(
+    const BufferInfo& buffer_info,
     float width, int position_mode,
     int r, int g, int b, int a,
     int cap_style, int join_style
@@ -187,7 +191,9 @@ void stroke_path(
     const int channels = buffer_info.channels;
     const bool premul = buffer_info.premultiply_alpha;
 
-    if (g_path_points.empty())
+    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+
+    if (!path_points || path_points->points.empty())
         return;
 
     std::vector<std::pair<float, float>> flat_path;
@@ -196,7 +202,7 @@ void stroke_path(
     const float flatness_px = 0.25f;
     const int   max_depth   = 10;
 
-    flatten_path(flat_path, flatness_px, max_depth, &corner_flags);
+    flatten_path(path_points->points, flat_path, flatness_px, max_depth, &corner_flags);
 
     const float half_w = width / 2.0f;
     const int supersample = 4;
@@ -252,13 +258,28 @@ void stroke_path(
 
         std::vector<std::pair<float, float>> quad = { {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_} };
 
-        rasterize_polygon_to_coverage(quad, coverage, supersample);
+        rasterize_polygon_to_coverage(buffer_info, quad, coverage, supersample);
 
         // Caps
-        if (!path_closed)
+        if (!path_points->is_closed)
         {
-            if (i == 0) draw_stroke_cap(p0.first, p0.second, -dx, -dy, width, cap_style, coverage, supersample);
-            if (i + 2 == flat_path.size()) draw_stroke_cap(p1.first, p1.second,  dx,  dy, width, cap_style, coverage, supersample);
+            if (i == 0) draw_stroke_cap(
+                buffer_info,
+                p0.first,
+                p0.second,
+                -dx, -dy,
+                width, cap_style,
+                coverage,
+                supersample
+            );
+            if (i + 2 == flat_path.size()) draw_stroke_cap(
+                buffer_info,
+                p1.first, p1.second,
+                dx, dy,
+                width, cap_style,
+                coverage,
+                supersample
+            );
         }
 
         // ---------------------------
@@ -270,7 +291,7 @@ void stroke_path(
             if (i + 2 < flat_path.size())
             {
 
-                // Only at real corners (skip interior Bezier samples if you have flags)
+                // Only at real corners (skip interior Bezier samples if has flags)
                 if (!corner_flags.empty() && !corner_flags[i + 1])
                 {
                     // no join at this interior bezier sample
@@ -278,7 +299,14 @@ void stroke_path(
                 else
                 {
                     const auto& p2 = flat_path[i + 2];
-                    draw_join_at_vertex(p0, p1, p2, offset_in, offset_out, join_style, coverage, supersample);
+                    draw_join_at_vertex(
+                        buffer_info,
+                        p0, p1, p2,
+                        offset_in, offset_out,
+                        join_style,
+                        coverage,
+                        supersample
+                    );
                 }
             }
         }
@@ -286,7 +314,7 @@ void stroke_path(
 
     // If the path is closed, also join the last->first->second corner
     // If path is closed, add the last segment from last -> first
-    if (path_closed && flat_path.size() >= 2)
+    if (path_points->is_closed && flat_path.size() >= 2)
     {
         const auto& p0 = flat_path[flat_path.size() - 1]; // last point
         const auto& p1 = flat_path[0];                    // first point
@@ -313,7 +341,7 @@ void stroke_path(
                 {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_}
             };
 
-            rasterize_polygon_to_coverage(quad, coverage, supersample);
+            rasterize_polygon_to_coverage(buffer_info, quad, coverage, supersample);
         }
 
         // And also draw the joins between the last segment and the first segment
@@ -323,6 +351,7 @@ void stroke_path(
                 if (corner_flags.empty() || corner_flags[k])
                 {
                     draw_join_at_vertex(
+                        buffer_info,
                         flat_path[i0], flat_path[k], flat_path[k2],
                         offset_in, offset_out, join_style, coverage, supersample
                     );
@@ -395,10 +424,16 @@ void stroke_path(
 // radius       : glow thickness outside the outer stroke edge
 // position_mode: StrokePosition { CENTER = 0, INSIDE, OUTSIDE }
 // color        : r,g,b,a (a is max opacity right at the outer stroke edge)
-void stroke_path_glow(float width, float radius, int position_mode, int r, int g, int b, int a)
-{
+void stroke_path_glow(
+    const BufferInfo& buffer_info,
+    float width, float radius, int position_mode,
+    int r, int g, int b, int a
+) {
     if (radius <= 0.0f || a <= 0) return;
-    if (g_path_points.empty()) return;
+
+    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+
+    if (!path_points || path_points->points.empty()) return;
 
     const int img_w = buffer_info.width;
     const int img_h = buffer_info.height;
@@ -416,7 +451,7 @@ void stroke_path_glow(float width, float radius, int position_mode, int r, int g
     const float flatness_px = 0.25f;
     const int   max_depth   = 10;
 
-    flatten_path(flat_path, flatness_px, max_depth, &corner_flags);
+    flatten_path(path_points->points, flat_path, flatness_px, max_depth, &corner_flags);
     if (flat_path.size() < 2) return;
 
     // Distance helper (point -> segment)
@@ -434,14 +469,14 @@ void stroke_path_glow(float width, float radius, int position_mode, int r, int g
         return std::hypot(px - qx, py - qy);
     };
 
-    // Build segment list (respect path_closed)
+    // Build segment list (respect path->is_closed)
     struct Seg { float ax, ay, bx, by; };
     std::vector<Seg> segs;
     segs.reserve(flat_path.size() + 1);
     for (size_t i = 0; i + 1 < flat_path.size(); ++i)
         segs.push_back({ flat_path[i].first, flat_path[i].second,
                          flat_path[i+1].first, flat_path[i+1].second });
-    if (path_closed && flat_path.size() >= 2)
+    if (path_points->is_closed && flat_path.size() >= 2)
         segs.push_back({ flat_path.back().first,  flat_path.back().second,
                          flat_path.front().first, flat_path.front().second });
 

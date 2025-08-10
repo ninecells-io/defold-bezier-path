@@ -9,8 +9,10 @@
 #include "buffer.h"
 #include "fill.h"
 
-void fill_color(int r, int g, int b, int a)
-{
+void fill_color(
+    const BufferInfo& buffer_info,
+    int r, int g, int b, int a
+) {
     int width = buffer_info.width;
     int height = buffer_info.height;
     int channels = buffer_info.channels;
@@ -52,19 +54,23 @@ void fill_color(int r, int g, int b, int a)
     }
 }
 
-void fill_path(int r, int g, int b, int a)
-{
+void fill_path(
+    const BufferInfo& buffer_info,
+    int r, int g, int b, int a
+) {
     const int supersample = 4;
     const int width = buffer_info.width;
     const int height = buffer_info.height;
     const int channels = buffer_info.channels;
     const bool premul = buffer_info.premultiply_alpha;
 
-    if (g_path_points.empty())
+    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+
+    if (!path_points || path_points->points.empty())
         return;
 
     std::vector<std::pair<float, float>> flat_path;
-    flatten_path(flat_path);
+    flatten_path(path_points->points, flat_path);
 
     const int s_width = width * supersample;
     const int s_height = height * supersample;
@@ -153,6 +159,7 @@ void fill_path(int r, int g, int b, int a)
 }
 
 void fill_path_gradient(
+    const BufferInfo& buffer_info, 
     int r1, int g1, int b1, int a1,
     int r2, int g2, int b2, int a2,
     float angle_deg
@@ -163,12 +170,14 @@ void fill_path_gradient(
     const int channels   = buffer_info.channels;
     const bool premul    = buffer_info.premultiply_alpha;
 
-    if (g_path_points.empty() || width <= 0 || height <= 0 || channels < 3)
+    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+
+    if (!path_points || path_points->points.empty() || width <= 0 || height <= 0 || channels < 3)
         return;
 
     // 1) Flatten path once
     std::vector<std::pair<float, float>> flat_path;
-    flatten_path(flat_path);
+    flatten_path(path_points->points, flat_path);
     if (flat_path.empty())
         return;
 

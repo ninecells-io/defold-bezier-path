@@ -1,7 +1,6 @@
 #pragma once
 
-struct BufferInfo
-{
+struct BufferInfo {
     dmBuffer::HBuffer buffer;
     int width;
     int height;
@@ -9,16 +8,15 @@ struct BufferInfo
     bool premultiply_alpha;
     uint8_t *bytes;
     uint32_t src_size;
+    uint32_t path_handle;
 };
 
-enum PointType
-{
+enum PointType {
     POINT_TYPE_LINEAR,
     POINT_TYPE_BEZIER
 };
 
-struct PathPoint
-{
+struct PathPoint {
     PointType type;
     float x;
     float y;
@@ -26,9 +24,17 @@ struct PathPoint
     float cy; // control point y
 };
 
-// Global variables
-inline std::vector<PathPoint> g_path_points;
-inline bool path_closed = false;
-inline BufferInfo buffer_info;
+struct PathPointList {
+    std::vector<PathPoint> points;
+    bool is_closed = false;
+};
 
-void read_and_validate_buffer_info(lua_State *L, int index);
+// Global variables
+inline std::vector<PathPointList> g_path_points;
+
+int create_path();
+void delete_path(int index);
+
+PathPointList* get_path_points(int index);
+
+BufferInfo read_and_validate_buffer_info(lua_State *L, int index);
