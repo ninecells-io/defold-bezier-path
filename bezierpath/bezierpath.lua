@@ -76,6 +76,11 @@ function M.line(handle, point1, point2)
     bezierpath.set_path_closed(handle, false)
 end
 
+function M.init_buffer(buffer_info, color)
+    bezierpath.init_buffer(buffer_info)
+    M.fill_color(buffer_info, color)
+end
+
 --LOW LEVEL ACCESS
 
 function M.fill_color(buffer_info, color)
@@ -87,7 +92,7 @@ function M.create_path()
 end
 
 function M.delete_path(handle)
-    bezierpath.delete_path()
+    bezierpath.delete_path(handle)
 end
 
 function M.reset_path(handle)

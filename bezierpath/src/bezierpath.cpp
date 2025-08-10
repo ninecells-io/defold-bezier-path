@@ -20,8 +20,7 @@
 
 // LUA FUNCTIONS
 
-static int fill_color_lua(lua_State *L)
-{
+static int fill_color_lua(lua_State *L) {
     int top = lua_gettop(L);
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
     int32_t r = luaL_checknumber(L, 2);
@@ -44,8 +43,7 @@ static int fill_color_lua(lua_State *L)
     return 0;
 }
 
-static int reset_path_lua(lua_State* L)
-{
+static int reset_path_lua(lua_State* L) {
     int top = lua_gettop(L);
     int32_t path_handle = luaL_checknumber(L, 1);
 
@@ -59,8 +57,7 @@ static int reset_path_lua(lua_State* L)
     return 0;
 }
 
-static int add_point_lua(lua_State* L)
-{
+static int add_point_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     int32_t path_handle = luaL_checknumber(L, 1);
@@ -83,8 +80,7 @@ static int add_point_lua(lua_State* L)
     return 0;
 }
 
-static int add_bezier_point_lua(lua_State* L)
-{
+static int add_bezier_point_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     int32_t path_handle = luaL_checknumber(L, 1);
@@ -109,8 +105,7 @@ static int add_bezier_point_lua(lua_State* L)
     return 0;
 }
 
-static int set_path_closed_lua(lua_State* L)
-{
+static int set_path_closed_lua(lua_State* L) {
     int top = lua_gettop(L);
     int32_t path_handle = luaL_checknumber(L, 1);
 
@@ -121,11 +116,24 @@ static int set_path_closed_lua(lua_State* L)
 
     assert(top == lua_gettop(L));
     return 0;
-
 }
 
-static int fill_path_lua(lua_State* L)
-{
+static int init_buffer_lua(lua_State* L) {
+    int top = lua_gettop(L);
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
+
+    if (buffer_info.width <= 0 || buffer_info.height <= 0 || buffer_info.channels <= 0) {
+        return 0; // invalid dimensions
+    }
+
+    // Initialize to zero
+    std::memset(buffer_info.bytes, 0, buffer_info.src_size);
+
+    assert(top == lua_gettop(L));
+    return 0;
+}
+
+static int fill_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
@@ -140,8 +148,7 @@ static int fill_path_lua(lua_State* L)
     return 0;
 }
 
-static int fill_path_gradient_lua(lua_State* L)
-{
+static int fill_path_gradient_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
@@ -164,8 +171,7 @@ static int fill_path_gradient_lua(lua_State* L)
     return 0;
 }
 
-static int fill_shadow_lua(lua_State* L)
-{
+static int fill_shadow_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
@@ -185,8 +191,7 @@ static int fill_shadow_lua(lua_State* L)
     return 0;
 }
 
-static int stroke_path_lua(lua_State* L)
-{
+static int stroke_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
@@ -236,8 +241,7 @@ static int stroke_path_lua(lua_State* L)
     return 0;
 }
 
-static int stroke_path_glow_lua(lua_State* L)
-{
+static int stroke_path_glow_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
@@ -294,6 +298,7 @@ static const luaL_reg Module_methods[] = {
     {"add_point", add_point_lua},
     {"add_bezier_point", add_bezier_point_lua},
     {"set_path_closed", set_path_closed_lua},
+    {"init_buffer", init_buffer_lua},
     {"fill_path", fill_path_lua},
     {"fill_path_gradient", fill_path_gradient_lua},
     {"fill_shadow", fill_shadow_lua},
@@ -302,33 +307,28 @@ static const luaL_reg Module_methods[] = {
     {0, 0}
 };
 
-static void LuaInit(lua_State *L)
-{
+static void LuaInit(lua_State *L) {
     int top = lua_gettop(L);
     luaL_register(L, MODULE_NAME, Module_methods);
     lua_pop(L, 1);
     assert(top == lua_gettop(L));
 }
 
-dmExtension::Result AppInitializeExtension(dmExtension::AppParams *params)
-{
+dmExtension::Result AppInitializeExtension(dmExtension::AppParams *params) {
     return dmExtension::RESULT_OK;
 }
 
-dmExtension::Result InitializeExtension(dmExtension::Params *params)
-{
+dmExtension::Result InitializeExtension(dmExtension::Params *params) {
     LuaInit(params->m_L);
     printf("Registered %s Extension\n", MODULE_NAME);
     return dmExtension::RESULT_OK;
 }
 
-dmExtension::Result AppFinalizeExtension(dmExtension::AppParams *params)
-{
+dmExtension::Result AppFinalizeExtension(dmExtension::AppParams *params) {
     return dmExtension::RESULT_OK;
 }
 
-dmExtension::Result FinalizeExtension(dmExtension::Params *params)
-{
+dmExtension::Result FinalizeExtension(dmExtension::Params *params) {
     return dmExtension::RESULT_OK;
 }
 

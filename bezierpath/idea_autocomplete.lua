@@ -23,6 +23,9 @@ function bezierpath.add_bezier_point(handle, x, y, cx, cy) end
 --Set if the path is closed
 function bezierpath.set_path_closed(handle, closed) end
 
+--Fill buffer with zero
+function bezierpath.init_buffer(buffer_info, color) end
+
 --Fill the current path with given color
 function bezierpath.fill_path(buffer_info, red, green, blue, alpha) end
 
