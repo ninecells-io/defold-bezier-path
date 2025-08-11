@@ -11,6 +11,46 @@ function M.rgbaToColor(red, green, blue, alpha)
     }
 end
 
+function M.hexToColor(hex, alpha)
+    -- accept string or number (e.g., 0xffaabb)
+    local s = type(hex) == "number" and string.format("%x", hex) or tostring(hex)
+
+    -- strip prefixes like "#", "0x", whitespace
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    s = s:gsub("^#", ""):gsub("^0[xX]", "")
+
+    local r, g, b, a
+
+    if #s == 3 then
+        -- #RGB
+        r = tonumber(s:sub(1,1)..s:sub(1,1), 16)
+        g = tonumber(s:sub(2,2)..s:sub(2,2), 16)
+        b = tonumber(s:sub(3,3)..s:sub(3,3), 16)
+    elseif #s == 4 then
+        -- #RGBA
+        r = tonumber(s:sub(1,1)..s:sub(1,1), 16)
+        g = tonumber(s:sub(2,2)..s:sub(2,2), 16)
+        b = tonumber(s:sub(3,3)..s:sub(3,3), 16)
+        a = tonumber(s:sub(4,4)..s:sub(4,4), 16)
+    elseif #s == 6 or #s == 8 then
+        -- #RRGGBB or #RRGGBBAA
+        r = tonumber(s:sub(1,2), 16)
+        g = tonumber(s:sub(3,4), 16)
+        b = tonumber(s:sub(5,6), 16)
+        if #s == 8 then
+            a = tonumber(s:sub(7,8), 16)
+        end
+    else
+        error("Invalid hex color: " .. tostring(hex))
+    end
+
+    -- override/ensure alpha (default 255)
+    if alpha ~= nil then a = alpha end
+    if a == nil then a = 255 end
+
+    return M.rgbaToColor(r, g, b, a)
+end
+
 function M.point(x, y)
     return {
         x = x,
