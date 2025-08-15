@@ -148,6 +148,18 @@ static int fill_path_lua(lua_State* L) {
     return 0;
 }
 
+static int mask_path_lua(lua_State* L) {
+    int top = lua_gettop(L);
+
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
+    bool inverted = lua_toboolean(L, 2);
+
+    mask_path(buffer_info, inverted);
+
+    assert(top == lua_gettop(L));
+    return 0;
+}
+
 static int fill_path_gradient_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -302,6 +314,7 @@ static const luaL_reg Module_methods[] = {
     {"fill_path", fill_path_lua},
     {"fill_path_gradient", fill_path_gradient_lua},
     {"fill_shadow", fill_shadow_lua},
+    {"mask_path", mask_path_lua},
     {"stroke_path", stroke_path_lua},
     {"stroke_path_glow", stroke_path_glow_lua},
     {0, 0}

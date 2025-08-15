@@ -3,7 +3,7 @@ local m = require "example/draw_example"
 function init(self)
     msg.post("@render:", "clear_color", {color = vmath.vector4(1, 1, 1, 1)})
     -- size of texture when scaled to nearest power of two
-    m.draw("#sprite")
+    --m.draw("#sprite")
 end
 
 function update(self, dt)

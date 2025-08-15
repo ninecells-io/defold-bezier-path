@@ -10,6 +10,10 @@ void fill_path(
     const BufferInfo& buffer_info,
     int r, int g, int b, int a
 );
+void mask_path(
+    const BufferInfo& buffer_info,
+    bool inverted
+);
 void fill_path_gradient(
     const BufferInfo& buffer_info,
     int r1, int g1, int b1, int a1,

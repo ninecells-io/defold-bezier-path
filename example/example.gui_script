@@ -1,0 +1,5 @@
+local m = require "example/draw_example"
+
+function init(self)
+	m.drawGui()
+end

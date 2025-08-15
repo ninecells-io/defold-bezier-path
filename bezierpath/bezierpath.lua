@@ -159,6 +159,10 @@ function M.fill_path(buffer_info, color)
     bezierpath.fill_path(buffer_info, color.r, color.g, color.b, color.a)
 end
 
+function M.mask_path(buffer_info, inverted)
+    bezierpath.mask_path(buffer_info, inverted)
+end
+
 --Fill the current path with a gradient
 function M.fill_path_gradient(buffer_info, color1, color2, angle)
     bezierpath.fill_path_gradient(

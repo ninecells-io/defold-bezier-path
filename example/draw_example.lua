@@ -74,4 +74,63 @@ function M.draw(sprite)
 	bp.delete_path(handle)
 end
 
+function M.drawGui()
+
+	local parent = gui.new_box_node(
+		vmath.vector3(256, 256, 0),
+		vmath.vector3(0)
+	)
+
+	gui.set_inherit_alpha(parent, false)
+	gui.set_alpha(parent, 0)
+	gui.set_blend_mode(parent, gui.BLEND_ALPHA)
+	gui.set_size_mode(parent, gui.SIZE_MODE_MANUAL)
+	gui.set_visible(parent, true)
+	
+	local color = bp.rgbaToColor(255, 0, 0, 255)
+	M.addBox(400, 200, color, bp.rgbaToColor(0, 0, 255, 255), "box1", parent)
+	--local b = M.addBox(250, 60, color, bp.rgbaToColor(255, 0, 0, 100), "box2", parent)
+
+	--M.addBox(150, 90, color, bp.rgbaToColor(0, 0, 255, 100), "box3", b)
+end
+
+function M.addBox(width, height, color, color2, name, parent)
+	local handle = bp.create_path()
+	local buffer_info = {
+		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = 4}}),
+		width = width,
+		height = height,
+		channels = 4,
+		premultiply_alpha = true,
+		path_handle = handle
+	}
+	bp.init_buffer(buffer_info, bp.black(0))
+	bp.rounded_rect(handle, 0, 0, width, height, 8)
+	bp.fill_path_gradient(buffer_info, color, color2, 45)
+
+	bp.rounded_rect(handle, 20, 20, 100, 100, 16)
+	bp.mask_path(buffer_info, true)
+
+	local node = gui.new_box_node(
+		vmath.vector3(0, 0, 0),
+		vmath.vector3(width, height, 0)
+	)
+
+	gui.set_inherit_alpha(node, false)
+	gui.set_alpha(node, 1)
+	gui.set_blend_mode(node, gui.BLEND_ALPHA)
+	gui.set_parent(node, parent, false)
+	gui.set_size_mode(node, gui.SIZE_MODE_MANUAL)
+	gui.set_visible(node, true)
+
+	local texture = buffer.get_bytes(buffer_info.buffer, hash("rgba"))
+	if gui.new_texture(name, width, height, image.TYPE_RGBA, texture) then
+		gui.set_texture(node, name)
+	else
+		error("Unable to create texture")
+	end
+
+	return node
+end
+
 return M

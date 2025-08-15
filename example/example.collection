@@ -49,3 +49,15 @@ embedded_instances {
     z: 1.0
   }
 }
+embedded_instances {
+  id: "gui"
+  data: "components {\n"
+  "  id: \"example\"\n"
+  "  component: \"/example/example.gui\"\n"
+  "}\n"
+  ""
+  position {
+    x: 400.0
+    y: 200.0
+  }
+}
