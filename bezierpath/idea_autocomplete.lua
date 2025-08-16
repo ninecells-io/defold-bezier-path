@@ -32,8 +32,11 @@ function bezierpath.fill_path(buffer_info, red, green, blue, alpha) end
 --Fill the current path with a gradient
 function bezierpath.fill_path_gradient(buffer_info, red1, green1, blue1, alpha1, red2, green2, blue2, alpha2, angle) end
 
---Fill the current path with a shadow
-function bezierpath.fill_shadow(buffer_info, offset_x, offset_y, radius, red, green, blue, alpha) end
+--Mask the inside or outside of the current path with alpha = 0
+function bezierpath.mask_path(buffer_info, inverted) end
+
+--Fill the current path with a inner or outer drop shadow
+function bezierpath.fill_shadow(buffer_info, offset_x, offset_y, radius, inner, red, green, blue, alpha) end
 
 --Draw a stroke along the path
 function bezierpath.stroke_path(buffer_info, width, red, green, blue, alpha, position, cap_style, join_style) end

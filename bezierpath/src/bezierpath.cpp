@@ -191,13 +191,14 @@ static int fill_shadow_lua(lua_State* L) {
     int offset_x = luaL_checknumber(L, 2);
     int offset_y = luaL_checknumber(L, 3);
     int radius   = luaL_checknumber(L, 4);
+    bool inner   = lua_toboolean(L, 5);
 
-    int r = luaL_checknumber(L, 5);
-    int g = luaL_checknumber(L, 6);
-    int b = luaL_checknumber(L, 7);
-    int a = luaL_checknumber(L, 8);
+    int r = luaL_checknumber(L, 6);
+    int g = luaL_checknumber(L, 7);
+    int b = luaL_checknumber(L, 8);
+    int a = luaL_checknumber(L, 9);
 
-    fill_shadow(buffer_info, offset_x, offset_y, radius, r, g, b, a);
+    fill_shadow(buffer_info, offset_x, offset_y, radius, r, g, b, a, inner);
 
     assert(top == lua_gettop(L));
     return 0;
