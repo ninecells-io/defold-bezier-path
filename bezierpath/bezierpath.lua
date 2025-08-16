@@ -58,7 +58,7 @@ function M.point(x, y)
     }
 end
 
-function M.bezierPoint(point, controlPoint)
+function M.quadCurvePoint(point, controlPoint)
     return {
         x = point.x,
         y = point.y,
@@ -87,7 +87,7 @@ function M.polygon(handle, points, closed)
     bezierpath.reset_path(handle)
     for _, point in pairs(points) do
         if (point.cx ~= nil) then
-            bezierpath.add_bezier_point(handle, point.x, point.y, point.cx, point.cy)
+            bezierpath.add_quad_curve_point(handle, point.x, point.y, point.cx, point.cy)
         else
             bezierpath.add_point(handle, point.x, point.y)
         end
@@ -99,21 +99,21 @@ end
 function M.rounded_rect(handle, left, top, width, height, edge_radius)
     M.polygon(handle, {
         M.point(left + width - edge_radius, top),
-        M.bezierPoint(M.point(left + width, top + edge_radius), M.point(left + width, top)),
+        M.quadCurvePoint(M.point(left + width, top + edge_radius), M.point(left + width, top)),
         M.point(left + width, top + height - edge_radius),
-        M.bezierPoint(M.point(left + width - edge_radius, top + height), M.point(left + width, top + height)),
+        M.quadCurvePoint(M.point(left + width - edge_radius, top + height), M.point(left + width, top + height)),
         M.point(left + edge_radius, top + height),
-        M.bezierPoint(M.point(left, top + height - edge_radius), M.point(left, top + height)),
+        M.quadCurvePoint(M.point(left, top + height - edge_radius), M.point(left, top + height)),
         M.point(left, top + edge_radius),
-        M.bezierPoint(M.point(left + edge_radius, top), M.point(left, top))
+        M.quadCurvePoint(M.point(left + edge_radius, top), M.point(left, top))
     }, true)
 end
 
 function M.line(handle, point1, point2)
-    bezierpath.reset_path(handle)
-    bezierpath.add_point(handle, point1.x, point1.y)
-    bezierpath.add_point(handle, point2.x, point2.y)
-    bezierpath.set_path_closed(handle, false)
+    M.polygon(handle, {
+        M.point(point1.x, point1.y),
+        M.point(point2.x, point2.y)
+    }, false)
 end
 
 function M.init_buffer(buffer_info, color)
@@ -144,9 +144,9 @@ function M.add_point(handle, point)
     bezierpath.add_point(handle, point.x, point.y)
 end
 
---Add a bezier point to the path
-function M.add_bezier_point(handle, point, controlPoint)
-    bezierpath.add_bezier_point(handle, point.x, point.y, controlPoint.x, controlPoint.y)
+--Add a quad curve point to the path
+function M.add_quad_curve_point(handle, point, controlPoint)
+    bezierpath.add_quad_curve_point(handle, point.x, point.y, controlPoint.x, controlPoint.y)
 end
 
 --Set if the path is closed
@@ -174,8 +174,8 @@ function M.fill_path_gradient(buffer_info, color1, color2, angle)
 end
 
 --Fill the current path with a shadow
-function M.fill_shadow(buffer_info, offset, radius, color)
-    bezierpath.fill_shadow(buffer_info, offset.x, offset.y, radius, color.r, color.g, color.b, color.a)
+function M.fill_shadow(buffer_info, offset, radius, inner, color)
+    bezierpath.fill_shadow(buffer_info, offset.x, offset.y, radius, inner, color.r, color.g, color.b, color.a)
 end
 
 --Draw a stroke along the path

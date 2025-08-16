@@ -80,7 +80,7 @@ static int add_point_lua(lua_State* L) {
     return 0;
 }
 
-static int add_bezier_point_lua(lua_State* L) {
+static int add_quad_curve_point_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     int32_t path_handle = luaL_checknumber(L, 1);
@@ -90,7 +90,7 @@ static int add_bezier_point_lua(lua_State* L) {
     float cy = luaL_checknumber(L, 5);
 
     PathPoint p;
-    p.type = POINT_TYPE_BEZIER;
+    p.type = POINT_TYPE_QUAD_CURVE;
     p.x = x;
     p.y = y;
     p.cx = cx;
@@ -309,7 +309,7 @@ static const luaL_reg Module_methods[] = {
     {"delete_path", delete_path_lua},
     {"reset_path", reset_path_lua},
     {"add_point", add_point_lua},
-    {"add_bezier_point", add_bezier_point_lua},
+    {"add_quad_curve_point", add_quad_curve_point_lua},
     {"set_path_closed", set_path_closed_lua},
     {"init_buffer", init_buffer_lua},
     {"fill_path", fill_path_lua},

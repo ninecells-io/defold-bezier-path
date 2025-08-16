@@ -92,7 +92,7 @@ void flatten_path(
             points.emplace_back(p0.x, p0.y);
             if (corner_flags_out) corner_flags_out->push_back(1);
         }
-        else if (p1.type == POINT_TYPE_BEZIER)
+        else if (p1.type == POINT_TYPE_QUAD_CURVE)
         {
             // Quadratic: p0 -> control (p1.cx, p1.cy) -> p1
             flatten_quadratic_adaptive(

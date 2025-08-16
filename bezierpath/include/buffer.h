@@ -13,14 +13,14 @@ struct BufferInfo {
 
 enum PointType {
     POINT_TYPE_LINEAR,
-    POINT_TYPE_BEZIER
+    POINT_TYPE_QUAD_CURVE
 };
 
 struct PathPoint {
     PointType type;
     float x;
     float y;
-    float cx; // control point x (used only if type == POINT_TYPE_BEZIER)
+    float cx; // control point x (used only if type == POINT_TYPE_QUAD_CURVE)
     float cy; // control point y
 };
 
