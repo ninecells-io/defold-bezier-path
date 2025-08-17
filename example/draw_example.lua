@@ -36,7 +36,7 @@ function M.draw(sprite)
 	)
 
 	bp.rounded_rect(handle, 100, 60, 300, 250, 32)
-	bp.fill_shadow(buffer_info, bp.zero(), 20, bp.black(200))
+	bp.fill_shadow(buffer_info, bp.zero(), 20, false, bp.black(200))
 	bp.fill_path_gradient(
 		buffer_info,
 		bp.rgbaToColor(255, 0, 0, 200),
@@ -48,7 +48,7 @@ function M.draw(sprite)
 	bp.stroke_path(buffer_info, 4, bp.white(200), "center", "round")
 
 	bp.rounded_rect(handle, 240, 240, 200, 55, 16)
-	bp.fill_shadow(buffer_info, bp.zero(), 10, bp.rgbaToColor(0, 0, 0, 222))
+	bp.fill_shadow(buffer_info, bp.zero(), 10, false, bp.rgbaToColor(0, 0, 0, 222))
 	bp.fill_path(
 		buffer_info,
 		bp.rgbaToColor(0, 255, 0, 150)
@@ -87,11 +87,11 @@ function M.drawGui()
 	gui.set_size_mode(parent, gui.SIZE_MODE_MANUAL)
 	gui.set_visible(parent, true)
 	
-	local color = bp.rgbaToColor(255, 0, 0, 255)
-	M.addBox(400, 200, color, bp.rgbaToColor(0, 0, 255, 255), "box1", parent)
-	--local b = M.addBox(250, 60, color, bp.rgbaToColor(255, 0, 0, 100), "box2", parent)
+	--local color = bp.rgbaToColor(255, 0, 0, 255)
+	--M.addBox(512, 512, color, bp.rgbaToColor(0, 0, 255, 255), "box1", parent)
 
-	--M.addBox(150, 90, color, bp.rgbaToColor(0, 0, 255, 100), "box3", b)
+	M.circle(512, 512, bp.rgbaToColor(0, 0, 255, 255), bp.rgbaToColor(0, 0, 200, 255), "circle", parent)
+	M.pill(512, 512, bp.rgbaToColor(0, 0, 255, 255), bp.rgbaToColor(0, 0, 200, 255), "pill", parent)
 end
 
 function M.addBox(width, height, color, color2, name, parent)
@@ -105,11 +105,93 @@ function M.addBox(width, height, color, color2, name, parent)
 		path_handle = handle
 	}
 	bp.init_buffer(buffer_info, bp.black(0))
-	bp.rounded_rect(handle, 0, 0, width, height, 8)
+	bp.rounded_rect(handle, 60, 200, 300, 300, 8)
 	bp.fill_path_gradient(buffer_info, color, color2, 45)
+	bp.fill_shadow(buffer_info, bp.point(4, 20), 28, true, bp.black(180))
 
-	bp.rounded_rect(handle, 20, 20, 100, 100, 16)
-	bp.mask_path(buffer_info, true)
+	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
+	--bp.mask_path(buffer_info, false)
+
+	local node = gui.new_box_node(
+		vmath.vector3(0, 0, 0),
+		vmath.vector3(width, height, 0)
+	)
+
+	gui.set_inherit_alpha(node, false)
+	gui.set_alpha(node, 1)
+	gui.set_blend_mode(node, gui.BLEND_ALPHA)
+	gui.set_parent(node, parent, false)
+	gui.set_size_mode(node, gui.SIZE_MODE_MANUAL)
+	gui.set_visible(node, true)
+
+	local texture = buffer.get_bytes(buffer_info.buffer, hash("rgba"))
+	if gui.new_texture(name, width, height, image.TYPE_RGBA, texture) then
+		gui.set_texture(node, name)
+	else
+		error("Unable to create texture")
+	end
+
+	return node
+end
+
+function M.pill(width, height, color, color2, name, parent)
+	local handle = bp.create_path()
+	local buffer_info = {
+		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = 4}}),
+		width = width,
+		height = height,
+		channels = 4,
+		premultiply_alpha = true,
+		path_handle = handle
+	}
+	bp.init_buffer(buffer_info, bp.black(0))
+	bp.pill(handle, 120, 120, 80, 200)
+	bp.fill_path_gradient(buffer_info, color, color2, 45)
+	bp.fill_shadow(buffer_info, bp.point(4, -4), 28, true, bp.black(180))
+
+	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
+	--bp.mask_path(buffer_info, false)
+
+	local node = gui.new_box_node(
+		vmath.vector3(0, 0, 0),
+		vmath.vector3(width, height, 0)
+	)
+
+	gui.set_inherit_alpha(node, false)
+	gui.set_alpha(node, 1)
+	gui.set_blend_mode(node, gui.BLEND_ALPHA)
+	gui.set_parent(node, parent, false)
+	gui.set_size_mode(node, gui.SIZE_MODE_MANUAL)
+	gui.set_visible(node, true)
+
+	local texture = buffer.get_bytes(buffer_info.buffer, hash("rgba"))
+	if gui.new_texture(name, width, height, image.TYPE_RGBA, texture) then
+		gui.set_texture(node, name)
+	else
+		error("Unable to create texture")
+	end
+
+	return node
+end
+
+function M.circle(width, height, color, color2, name, parent)
+	local handle = bp.create_path()
+	local buffer_info = {
+		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = 4}}),
+		width = width,
+		height = height,
+		channels = 4,
+		premultiply_alpha = true,
+		path_handle = handle
+	}
+	bp.init_buffer(buffer_info, bp.black(0))
+	bp.circle(handle, 120, 300, 80, 80)
+	bp.fill_shadow(buffer_info, bp.point(20, 20), 28, false, bp.black(120))
+	bp.fill_path_gradient(buffer_info, color, color2, 45)
+	bp.fill_shadow(buffer_info, bp.point(4, -4), 28, true, bp.black(180))
+
+	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
+	--bp.mask_path(buffer_info, false)
 
 	local node = gui.new_box_node(
 		vmath.vector3(0, 0, 0),

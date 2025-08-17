@@ -17,8 +17,11 @@ function bezierpath.reset_path(handle) end
 --Add a point to the path
 function bezierpath.add_point(handle, x, y) end
 
---Add a bezier point to the path
-function bezierpath.add_bezier_point(handle, x, y, cx, cy) end
+--Add a arc point to the path
+function bezierpath.add_arc_point(handle, center_x, center_y, radius, start_angle, end_angle, clockwise) end
+
+--Add a quad curve point to the path
+function bezierpath.add_quad_curve_point(handle, x, y, cx, cy) end
 
 --Set if the path is closed
 function bezierpath.set_path_closed(handle, closed) end
