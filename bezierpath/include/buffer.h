@@ -13,15 +13,23 @@ struct BufferInfo {
 
 enum PointType {
     POINT_TYPE_LINEAR,
-    POINT_TYPE_QUAD_CURVE
+    POINT_TYPE_QUAD_CURVE,
+    POINT_TYPE_ARC          // NEW
 };
 
+// --- extend PathPoint (keep existing fields as-is)
 struct PathPoint {
+    float x, y;        // anchor/end (always the segment end)
     PointType type;
-    float x;
-    float y;
-    float cx; // control point x (used only if type == POINT_TYPE_QUAD_CURVE)
-    float cy; // control point y
+    float cx, cy;      // (used for QUADRATIC; ignored otherwise)
+
+    // --- ARC parameters (used only when type == POINT_TYPE_ARC)
+    float arc_cx;        // center.x
+    float arc_cy;        // center.y
+    float arc_radius;    // radius >= 0
+    float arc_start;     // start angle [rad]
+    float arc_end;       // end angle [rad]
+    uint8_t arc_clockwise; // 1 = clockwise (decreasing angles), 0 = ccw
 };
 
 struct PathPointList {

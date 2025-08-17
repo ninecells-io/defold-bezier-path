@@ -23,7 +23,7 @@ void draw_circle_cap(
 
     for (int i = 0; i <= segments; ++i)
     {
-        float angle = -M_PI_2 + (M_PI * i / segments); // From -90° to +90°
+        float angle = -M_TAU + (M_PI * i / segments); // From -90° to +90°
         float rx = cosf(angle);
         float ry = sinf(angle);
 

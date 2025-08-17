@@ -8,6 +8,19 @@
 #include "buffer.h"
 #include "utils.h"
 
+// --- begin: min/max polyfill (safe for old C++ and Windows) ------------------
+#if defined(_WIN32) && !defined(NOMINMAX)
+#  define NOMINMAX 1
+#endif
+
+template<typename T> static inline T bp_min(T a, T b){ return (b < a)? b : a; }
+template<typename T> static inline T bp_max(T a, T b){ return (a < b)? b : a; }
+static inline float bp_minf(float a,float b){ return (b < a)? b : a; }
+static inline float bp_maxf(float a,float b){ return (a < b)? b : a; }
+static inline float bp_clampf(float x,float lo,float hi){ return bp_maxf(lo, bp_minf(x, hi)); }
+
+// --- end: min/max polyfill ---------------------------------------------------
+
 // --- helper: squared distance from point to infinite line through a-b
 static inline float distance_point_to_line(
     float px, float py,
@@ -69,6 +82,48 @@ static void flatten_quadratic_adaptive(
     );
 }
 
+static inline int bp_isfinite(float x){ return std::isfinite(x) ? 1 : 0; }
+
+void flatten_arc(
+    float cx, float cy,
+    float radius,
+    float start_angle,
+    float end_angle,
+    bool  clockwise,
+    std::vector<std::pair<float,float>>& out_pts,
+    float tolerance_px,
+    bool  emit_start_point
+) {
+    if (radius <= 0.0f) return;
+
+    // UIKit semantics: clockwise => decreasing angles
+    float sweep = end_angle - start_angle;
+    if (clockwise) { while (sweep > 0.0f) sweep -= M_TAU; }
+    else           { while (sweep < 0.0f) sweep += M_TAU; }
+    if (fabsf(sweep) < 1e-7f) return;
+
+    // Sagitta error bound: s = r*(1 - cos(Δ/2)) <= tol  => Δ_max = 2*acos(1 - tol/r)
+    float tol   = bp_maxf(1e-6f, tolerance_px);
+    float denom = bp_maxf(radius, tol);
+    float c     = bp_clampf(1.0f - tol/denom, -1.0f, 1.0f);
+    float max_d = 2.0f * acosf(c);
+    if (!(max_d > 0.0f) || !bp_isfinite(max_d)) max_d = M_PI / 16.0f; // fallback
+    max_d = bp_minf(max_d, M_PI / 2.0f); // ≤ 90°
+
+    int   segments = (int)ceilf(fabsf(sweep) / max_d);
+    if (segments < 1) segments = 1;
+    float delta = sweep / (float)segments;
+
+    auto pt = [&](float a){ return std::pair<float,float>(cx + radius * cosf(a), cy + radius * sinf(a)); };
+
+    float a = start_angle;
+    if (emit_start_point) out_pts.emplace_back(pt(a));
+    for (int i = 0; i < segments; ++i) {
+        a += delta;
+        out_pts.emplace_back(pt(a));
+    }
+}
+
 void flatten_path(
     const std::vector<PathPoint>& path,
     std::vector<std::pair<float, float>>& points,
@@ -88,13 +143,13 @@ void flatten_path(
 
         if (p1.type == POINT_TYPE_LINEAR)
         {
-            // emit the start of the segment
+            // (existing code)
             points.emplace_back(p0.x, p0.y);
             if (corner_flags_out) corner_flags_out->push_back(1);
         }
         else if (p1.type == POINT_TYPE_QUAD_CURVE)
         {
-            // Quadratic: p0 -> control (p1.cx, p1.cy) -> p1
+            // (existing code using p1.cx/p1.cy)
             flatten_quadratic_adaptive(
                 p0.x, p0.y, p1.cx, p1.cy, p1.x, p1.y,
                 tolerance_px, 0, max_depth,
@@ -102,6 +157,29 @@ void flatten_path(
                 /*emit_start_point=*/true,
                 /*end_is_corner=*/true
             );
+        }
+        else if (p1.type == POINT_TYPE_ARC)
+        {
+            // ARC params live on the ENDPOINT (p1), same convention as QUAD
+            std::vector<std::pair<float,float>> tmp;
+            flatten_arc(
+                p1.arc_cx, p1.arc_cy,
+                fabsf(p1.arc_radius),
+                p1.arc_start, p1.arc_end,
+                (p1.arc_clockwise != 0),
+                tmp, tolerance_px,
+                /*emit_start_point=*/true
+            );
+            if (!tmp.empty()) {
+                // interior points are smooth (0); mark the *last* point as a corner (1)
+                if (corner_flags_out) {
+                    if (tmp.size() > 1) {
+                        for (size_t k = 0; k < tmp.size() - 1; ++k) corner_flags_out->push_back(0);
+                    }
+                    corner_flags_out->push_back(1);
+                }
+                points.insert(points.end(), tmp.begin(), tmp.end());
+            }
         }
     }
 }

@@ -4,8 +4,8 @@
 #define M_PI 3.14159265358979323846f
 #endif
 
-#ifndef M_PI_2
-#define M_PI_2 6.2831853071795864769f
+#ifndef M_TAU
+#define M_TAU 6.2831853071795864769f
 #endif
 
 #include "buffer.h"
@@ -15,6 +15,17 @@ T clamp(T val, T min_val, T max_val)
 {
     return (val < min_val) ? min_val : (val > max_val) ? max_val : val;
 }
+
+void flatten_arc(
+    float cx, float cy,
+    float radius,
+    float start_angle,
+    float end_angle,
+    bool  clockwise,
+    std::vector<std::pair<float,float>>& out_pts,
+    float tolerance_px = 0.25f,
+    bool  emit_start_point = false
+);
 
 void flatten_path(
     const std::vector<PathPoint>& path,

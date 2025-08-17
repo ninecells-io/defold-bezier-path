@@ -105,6 +105,39 @@ static int add_quad_curve_point_lua(lua_State* L) {
     return 0;
 }
 
+static int add_arc_point_lua(lua_State* L) {
+    int top = lua_gettop(L);
+
+    int32_t path_handle = (int32_t) luaL_checknumber(L, 1);
+    float cx            = (float) luaL_checknumber(L, 2);
+    float cy            = (float) luaL_checknumber(L, 3);
+    float radius        = (float) luaL_checknumber(L, 4);
+    float start_angle   = (float) luaL_checknumber(L, 5); // radians
+    float end_angle     = (float) luaL_checknumber(L, 6); // radians
+    int clockwise       = lua_toboolean(L, 7) ? 1 : 0;
+
+    PathPoint p{};
+    p.type          = POINT_TYPE_ARC;
+    p.arc_cx        = cx;
+    p.arc_cy        = cy;
+    p.arc_radius    = fabsf(radius);
+    p.arc_start     = start_angle;
+    p.arc_end       = end_angle;
+    p.arc_clockwise = (uint8_t)clockwise;
+
+    // The point’s (x,y) is the segment END (same convention as quad)
+    p.x = cx + p.arc_radius * cosf(end_angle);
+    p.y = cy + p.arc_radius * sinf(end_angle);
+
+    p.cx = p.cy = 0.0f;
+
+    if (PathPointList* path_points = get_path_points(path_handle)) {
+        path_points->points.push_back(p);
+    }
+    assert(top == lua_gettop(L));
+    return 0;
+}
+
 static int set_path_closed_lua(lua_State* L) {
     int top = lua_gettop(L);
     int32_t path_handle = luaL_checknumber(L, 1);
@@ -311,6 +344,7 @@ static const luaL_reg Module_methods[] = {
     {"add_point", add_point_lua},
     {"add_quad_curve_point", add_quad_curve_point_lua},
     {"set_path_closed", set_path_closed_lua},
+    {"add_arc_point", add_arc_point_lua},
     {"init_buffer", init_buffer_lua},
     {"fill_path", fill_path_lua},
     {"fill_path_gradient", fill_path_gradient_lua},

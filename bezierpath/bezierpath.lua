@@ -149,6 +149,12 @@ function M.add_quad_curve_point(handle, point, controlPoint)
     bezierpath.add_quad_curve_point(handle, point.x, point.y, controlPoint.x, controlPoint.y)
 end
 
+-- Add a circular arc segment (UIKit-like). Angles in radians.
+-- center = { x=..., y=... }, radius = number, clockwise = boolean
+function M.add_arc(path_handle, center, radius, start_angle, end_angle, clockwise)
+    bezierpath.add_arc_point(path_handle, center.x, center.y, radius, start_angle, end_angle, clockwise)
+end
+
 --Set if the path is closed
 function M.set_path_closed(handle, closed)
     bezierpath.set_path_closed(handle, closed)
