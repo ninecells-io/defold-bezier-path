@@ -1,1 +1,6 @@
 name: "BezierPath"
+
+platforms:
+    common:
+        context:
+            flags: ["-std=c++11"]
