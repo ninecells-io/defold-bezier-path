@@ -43,8 +43,8 @@ function M.hexToColor(hex, alpha)
 	end
 
 	-- override/ensure alpha (default 1)
-	if alpha ~= nil then a = alpha end
-	if a == nil then 
+	if alpha ~= nil then a = alpha * 255 end
+	if a == nil then
 		a = 1
 	else
 		a = a / 255
