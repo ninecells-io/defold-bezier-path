@@ -20,17 +20,26 @@
 
 // LUA FUNCTIONS
 
+static void read_color(lua_State *L, int start, int& r, int& g, int& b, int& a) {
+    // Clamp RGB to 0..255
+    r = (int)luaL_checknumber(L, start);
+    g = (int)luaL_checknumber(L, start + 1);
+    b = (int)luaL_checknumber(L, start + 2);
+    r = (r < 0) ? 0 : (r > 255) ? 255 : r;
+    g = (g < 0) ? 0 : (g > 255) ? 255 : g;
+    b = (b < 0) ? 0 : (b > 255) ? 255 : b;
+    
+    // Clamp alpha from 0..1 to 0..255
+    float alpha_float = luaL_optnumber(L, start + 3, 1.0f);
+    alpha_float = (alpha_float < 0.0f) ? 0.0f : (alpha_float > 1.0f) ? 1.0f : alpha_float;
+    a = (int)(alpha_float * 255.0f);
+}
+
 static int fill_color_lua(lua_State *L) {
     int top = lua_gettop(L);
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
-    int32_t r = luaL_checknumber(L, 2);
-    int32_t g = luaL_checknumber(L, 3);
-    int32_t b = luaL_checknumber(L, 4);
-    int32_t a = 0;
-    if (lua_isnumber(L, 5) == 1)
-    {
-        a = luaL_checknumber(L, 5);
-    }
+    int32_t r, g, b, a;
+    read_color(L, 2, r, g, b, a);
     if (a == 0 && buffer_info.channels == 4)
     {
         assert(top == lua_gettop(L));
@@ -170,10 +179,8 @@ static int fill_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
-    int r = luaL_checknumber(L, 2);
-    int g = luaL_checknumber(L, 3);
-    int b = luaL_checknumber(L, 4);
-    int a = luaL_optnumber(L, 5, 255);
+    int r, g, b, a;
+    read_color(L, 2, r, g, b, a);
 
     fill_path(buffer_info, r, g, b, a);
 
@@ -198,15 +205,11 @@ static int fill_path_gradient_lua(lua_State* L) {
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
 
-    int r1 = luaL_checknumber(L, 2);
-    int g1 = luaL_checknumber(L, 3);
-    int b1 = luaL_checknumber(L, 4);
-    int a1 = luaL_checknumber(L, 5);
+    int r1, g1, b1, a1;
+    read_color(L, 2, r1, g1, b1, a1);
 
-    int r2 = luaL_checknumber(L, 6);
-    int g2 = luaL_checknumber(L, 7);
-    int b2 = luaL_checknumber(L, 8);
-    int a2 = luaL_checknumber(L, 9);
+    int r2, g2, b2, a2;
+    read_color(L, 6, r2, g2, b2, a2);
 
     float angle_deg = luaL_checknumber(L, 10);
 
@@ -226,10 +229,8 @@ static int fill_shadow_lua(lua_State* L) {
     int radius   = luaL_checknumber(L, 4);
     bool inner   = lua_toboolean(L, 5);
 
-    int r = luaL_checknumber(L, 6);
-    int g = luaL_checknumber(L, 7);
-    int b = luaL_checknumber(L, 8);
-    int a = luaL_checknumber(L, 9);
+    int r, g, b, a;
+    read_color(L, 6, r, g, b, a);
 
     fill_shadow(buffer_info, offset_x, offset_y, radius, r, g, b, a, inner);
 
@@ -243,10 +244,8 @@ static int stroke_path_lua(lua_State* L) {
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
 
     float stroke_width = luaL_checknumber(L, 2);
-    int r = luaL_checknumber(L, 3);
-    int g = luaL_checknumber(L, 4);
-    int b = luaL_checknumber(L, 5);
-    int a = luaL_checknumber(L, 6);
+    int r, g, b, a;
+    read_color(L, 3, r, g, b, a);
 
     StrokePosition position = CENTER;
     if (lua_isstring(L, 7))
@@ -294,10 +293,8 @@ static int stroke_path_glow_lua(lua_State* L) {
 
     float stroke_width = luaL_checknumber(L, 2);
     float radius = luaL_checknumber(L, 3);
-    int r = luaL_checknumber(L, 5);
-    int g = luaL_checknumber(L, 6);
-    int b = luaL_checknumber(L, 7);
-    int a = luaL_checknumber(L, 8);
+    int r, g, b, a;
+    read_color(L, 5, r, g, b, a);
 
     StrokePosition position = CENTER;
     if (lua_isstring(L, 4))
