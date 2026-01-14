@@ -158,7 +158,9 @@ end
 
 function M.create_path(buffer_info)
     local path = bezierpath.create_path()
-    buffer_info.path_handle = path
+    if buffer_info ~= nil then
+        buffer_info.path_handle = path
+    end
     return path
 end
 
