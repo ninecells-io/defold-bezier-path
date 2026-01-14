@@ -6,8 +6,8 @@ local M = {}
 
 function M.point(x, y)
     return {
-        x = x,
-        y = y
+        x = x or 0,
+        y = y or 0
     }
 end
 
@@ -156,8 +156,10 @@ function M.fill_color(buffer_info, color)
     bezierpath.fill_color(buffer_info, color.r, color.g, color.b, color.a)
 end
 
-function M.create_path()
-    return bezierpath.create_path()
+function M.create_path(buffer_info)
+    local path = bezierpath.create_path()
+    buffer_info.path_handle = path
+    return path
 end
 
 function M.delete_path(handle)

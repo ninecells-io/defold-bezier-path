@@ -6,7 +6,7 @@ bezierpath = {}
 function bezierpath.fill_color(buffer_info, red, green, blue, alpha) end
 
 --Create a new entry in path record and return handle
-function bezierpath.create_path() end
+function bezierpath.create_path(buffer_info) end
 
 --Delete path record
 function bezierpath.delete_path(handle) end
