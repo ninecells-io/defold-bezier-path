@@ -13,7 +13,7 @@
 
 static inline float fast_exp(float x) { return expf(x); } // keep separate in case you swap impls
 
-void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
+void gaussian_blur(std::vector<float>& image, int width, int height, int radius, bool clamp_edges)
 {
     if (radius <= 0 || width <= 0 || height <= 0) return;
 
@@ -22,7 +22,6 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
     const float sigma = radius / 2.0f;
     const float two_sigma2 = 2.0f * sigma * sigma;
 
-    // Build normalized 1D kernel
     float sum = 0.0f;
     for (int i = 0; i < kernel_size; ++i) {
         const int x = i - radius;
@@ -35,17 +34,28 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
 
     std::vector<float> temp((size_t)width * (size_t)height);
 
+    auto sample_h = [&](const float* rowp, int sx) -> float {
+        if (clamp_edges) {
+            if (sx < 0) sx = 0;
+            else if (sx >= width) sx = width - 1;
+            return rowp[sx];
+        } else {
+            if ((unsigned)sx >= (unsigned)width) return 0.0f;
+            return rowp[sx];
+        }
+    };
+
     // ---------- Horizontal pass ----------
     for (int y = 0; y < height; ++y) {
         const int row = y * width;
+        const float* rowp = &image[row];
 
-        // If the row is too narrow for an interior region, do the slow (clamped) version for all pixels
+        // Slow path for narrow rows (must handle borders anyway)
         if (width <= 2 * radius) {
             for (int x = 0; x < width; ++x) {
                 float acc = 0.0f;
                 for (int k = -radius; k <= radius; ++k) {
-                    const int sx = std::min(std::max(x + k, 0), width - 1);
-                    acc += image[row + sx] * kernel[k + radius];
+                    acc += sample_h(rowp, x + k) * kernel[k + radius];
                 }
                 temp[row + x] = acc;
             }
@@ -56,18 +66,17 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
         for (int x = 0; x < radius; ++x) {
             float acc = 0.0f;
             for (int k = -radius; k <= radius; ++k) {
-                const int sx = std::min(std::max(x + k, 0), width - 1);
-                acc += image[row + sx] * kernel[k + radius];
+                acc += sample_h(rowp, x + k) * kernel[k + radius];
             }
             temp[row + x] = acc;
         }
 
-        // Interior (hot path): symmetric taps, contiguous, no clamps
+        // Interior (hot path): unchanged
         for (int x = radius; x < width - radius; ++x) {
-            float acc = image[row + x] * kernel[radius]; // center
+            float acc = rowp[x] * kernel[radius];
             for (int k = 1; k <= radius; ++k) {
                 const float w = kernel[radius + k];
-                acc += (image[row + x - k] + image[row + x + k]) * w;
+                acc += (rowp[x - k] + rowp[x + k]) * w;
             }
             temp[row + x] = acc;
         }
@@ -76,12 +85,22 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
         for (int x = width - radius; x < width; ++x) {
             float acc = 0.0f;
             for (int k = -radius; k <= radius; ++k) {
-                const int sx = std::min(std::max(x + k, 0), width - 1);
-                acc += image[row + sx] * kernel[k + radius];
+                acc += sample_h(rowp, x + k) * kernel[k + radius];
             }
             temp[row + x] = acc;
         }
     }
+
+    auto sample_v = [&](int sy, int x) -> float {
+        if (clamp_edges) {
+            if (sy < 0) sy = 0;
+            else if (sy >= height) sy = height - 1;
+            return temp[sy * width + x];
+        } else {
+            if ((unsigned)sy >= (unsigned)height) return 0.0f;
+            return temp[sy * width + x];
+        }
+    };
 
     // ---------- Vertical pass ----------
     for (int x = 0; x < width; ++x) {
@@ -90,8 +109,7 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
             for (int y = 0; y < height; ++y) {
                 float acc = 0.0f;
                 for (int k = -radius; k <= radius; ++k) {
-                    const int sy = std::min(std::max(y + k, 0), height - 1);
-                    acc += temp[sy * width + x] * kernel[k + radius];
+                    acc += sample_v(y + k, x) * kernel[k + radius];
                 }
                 image[y * width + x] = acc;
             }
@@ -102,13 +120,12 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
         for (int y = 0; y < radius; ++y) {
             float acc = 0.0f;
             for (int k = -radius; k <= radius; ++k) {
-                const int sy = std::min(std::max(y + k, 0), height - 1);
-                acc += temp[sy * width + x] * kernel[k + radius];
+                acc += sample_v(y + k, x) * kernel[k + radius];
             }
             image[y * width + x] = acc;
         }
 
-        // Interior
+        // Interior: unchanged
         for (int y = radius; y < height - radius; ++y) {
             const int idx = y * width + x;
             float acc = temp[idx] * kernel[radius];
@@ -123,8 +140,7 @@ void gaussian_blur(std::vector<float>& image, int width, int height, int radius)
         for (int y = height - radius; y < height; ++y) {
             float acc = 0.0f;
             for (int k = -radius; k <= radius; ++k) {
-                const int sy = std::min(std::max(y + k, 0), height - 1);
-                acc += temp[sy * width + x] * kernel[k + radius];
+                acc += sample_v(y + k, x) * kernel[k + radius];
             }
             image[y * width + x] = acc;
         }
@@ -191,7 +207,7 @@ void fill_shadow(
 
     // --- 3) Blur M -> B
     std::vector<float> blurred = mask;
-    gaussian_blur(blurred, width, height, blur_radius);
+    gaussian_blur(blurred, width, height, blur_radius, /*clamp_edges=*/ !inner);
 
     // --- 4) Composite (Defold y=0 bottom: NO Y FLIP)
     uint8_t* dst = buffer_info.bytes;
