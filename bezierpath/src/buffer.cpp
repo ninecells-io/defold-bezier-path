@@ -79,6 +79,14 @@ void delete_path(int index) {
     g_path_points.erase(g_path_points.begin() + index);
 }
 
+void clear_all_paths() {
+    // Clear all path point lists
+    g_path_points.clear();
+
+    // Force capacity release
+    std::vector<PathPointList>().swap(g_path_points);
+}
+
 // Returns a copy of the PathPointList at the given index
 PathPointList* get_path_points(int index) {
     if (index < 0 || static_cast<size_t>(index) >= g_path_points.size()) {

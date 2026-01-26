@@ -42,6 +42,7 @@ inline std::vector<PathPointList> g_path_points;
 
 int create_path();
 void delete_path(int index);
+void clear_all_paths();
 
 PathPointList* get_path_points(int index);
 

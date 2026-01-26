@@ -5,9 +5,36 @@
 #include <algorithm>
 #include <string>
 #include <stack>
+#include <limits>
 #include "utils.h"
 #include "buffer.h"
 #include "fill.h"
+
+static inline float distance_point_to_segment(float px, float py, float ax, float ay, float bx, float by)
+{
+    // Compute the distance from P to segment AB
+    const float abx = bx - ax;
+    const float aby = by - ay;
+    const float apx = px - ax;
+    const float apy = py - ay;
+
+    const float ab_len2 = abx * abx + aby * aby;
+    if (ab_len2 <= 1e-12f) {
+        const float dx = px - ax;
+        const float dy = py - ay;
+        return sqrtf(dx * dx + dy * dy);
+    }
+
+    float t = (apx * abx + apy * aby) / ab_len2;
+    t = clamp(t, 0.0f, 1.0f);
+
+    const float cx = ax + t * abx;
+    const float cy = ay + t * aby;
+
+    const float dx = px - cx;
+    const float dy = py - cy;
+    return sqrtf(dx * dx + dy * dy);
+}
 
 void fill_color(
     const BufferInfo& buffer_info,
@@ -67,12 +94,12 @@ void fill_path(
 
     PathPointList* path_points = get_path_points(buffer_info.path_handle);
     if (!path_points || path_points->points.empty())
-        return;
+    return;
 
     std::vector<std::pair<float, float>> flat_path;
     flatten_path(path_points->points, flat_path);
     if (flat_path.empty())
-        return;
+    return;
 
     const int s_width  = width  * supersample;
     const int s_height = height * supersample;
@@ -99,7 +126,7 @@ void fill_path(
 
             float alpha = std::min(sum * inv_samples, 1.0f);
             if (alpha <= 0.0f)
-                continue;
+            continue;
 
             const int idx = (y * width + x) * channels;
             uint8_t final_a = static_cast<uint8_t>(a * alpha);
@@ -150,12 +177,12 @@ void fill_path_gradient(
 
     PathPointList* path_points = get_path_points(buffer_info.path_handle);
     if (!path_points || path_points->points.empty() || width <= 0 || height <= 0 || channels < 3)
-        return;
+    return;
 
     std::vector<std::pair<float, float>> flat_path;
     flatten_path(path_points->points, flat_path);
     if (flat_path.empty())
-        return;
+    return;
 
     const int s_width  = width  * supersample;
     const int s_height = height * supersample;
@@ -189,7 +216,7 @@ void fill_path_gradient(
         }
     }
     if (!std::isfinite(min_t) || !std::isfinite(max_t))
-        return;
+    return;
 
     const float range_t = std::max(1e-6f, max_t - min_t);
 
@@ -221,7 +248,7 @@ void fill_path_gradient(
 
             const float alpha = std::min(sum_coverage * inv_samples, 1.0f);
             if (alpha <= 0.0f)
-                continue;
+            continue;
 
             const float t = t_weighted / (sum_coverage + 1e-6f);
 
@@ -229,6 +256,156 @@ void fill_path_gradient(
             uint8_t sg = (uint8_t)((1.0f - t) * g1 + t * g2);
             uint8_t sb = (uint8_t)((1.0f - t) * b1 + t * b2);
             uint8_t sa = (uint8_t)((1.0f - t) * a1 + t * a2);
+
+            sa = (uint8_t)(sa * alpha);
+
+            if (premul && sa < 255) {
+                const float a_scale = sa / 255.0f;
+                sr = (uint8_t)(sr * a_scale);
+                sg = (uint8_t)(sg * a_scale);
+                sb = (uint8_t)(sb * a_scale);
+            }
+
+            const int idx = (y * width + x) * channels;
+
+            if (channels == 4) {
+                const float src_a = sa / 255.0f;
+                const float inv_a = 1.0f - src_a;
+
+                const uint8_t dst_r = dst[idx + 0];
+                const uint8_t dst_g = dst[idx + 1];
+                const uint8_t dst_b = dst[idx + 2];
+                const uint8_t dst_a = dst[idx + 3];
+
+                dst[idx + 0] = (uint8_t)(sr * src_a + dst_r * inv_a);
+                dst[idx + 1] = (uint8_t)(sg * src_a + dst_g * inv_a);
+                dst[idx + 2] = (uint8_t)(sb * src_a + dst_b * inv_a);
+                dst[idx + 3] = (uint8_t)(sa + dst_a * inv_a);
+            } else if (channels == 3) {
+                dst[idx + 0] = sr;
+                dst[idx + 1] = sg;
+                dst[idx + 2] = sb;
+            }
+        }
+    }
+}
+
+void fill_path_gradient_shape(
+    const BufferInfo& buffer_info,
+    int r_outer, int g_outer, int b_outer, int a_outer,
+    int r_inner, int g_inner, int b_inner, int a_inner
+) {
+    const int supersample = 4;
+    const int width       = buffer_info.width;
+    const int height      = buffer_info.height;
+    const int channels    = buffer_info.channels;
+    const bool premul     = buffer_info.premultiply_alpha;
+
+    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+    if (!path_points || path_points->points.empty() || width <= 0 || height <= 0 || channels < 3)
+    return;
+
+    std::vector<std::pair<float, float>> flat_path;
+    flatten_path(path_points->points, flat_path);
+    if (flat_path.size() < 3)
+    return;
+
+    const int s_width  = width  * supersample;
+    const int s_height = height * supersample;
+    std::vector<float> coverage((size_t)s_width * (size_t)s_height, 0.0f);
+
+    // Build coverage via rasterizer (AA via supersampling)
+    rasterize_polygon_to_coverage(buffer_info, flat_path, coverage, supersample);
+
+    // Measure "shape-following" gradient parameter as distance-to-boundary.
+    // t = 0 at boundary, t = 1 at the most interior point (max distance).
+    const float inv_ss  = 1.0f / (float)supersample;
+    const float half_ss = 0.5f * inv_ss;
+
+    // Find max distance across all covered samples (approx. medial radius)
+    float max_d = 0.0f;
+
+    const size_t n = flat_path.size();
+    for (int cy = 0; cy < s_height; ++cy) {
+        const size_t row_off = (size_t)cy * (size_t)s_width;
+        for (int cx = 0; cx < s_width; ++cx) {
+            if (coverage[row_off + (size_t)cx] <= 0.0f)
+            continue;
+
+            const float fx = (float)cx * inv_ss + half_ss;
+            const float fy = (float)(s_height - cy - 1) * inv_ss + half_ss;
+
+            float min_d = std::numeric_limits<float>::infinity();
+            for (size_t i = 0; i < n; ++i) {
+                const size_t j = (i + 1) % n;
+                const float ax = flat_path[i].first;
+                const float ay = flat_path[i].second;
+                const float bx = flat_path[j].first;
+                const float by = flat_path[j].second;
+                const float d  = distance_point_to_segment(fx, fy, ax, ay, bx, by);
+                if (d < min_d) min_d = d;
+            }
+
+            if (std::isfinite(min_d) && min_d > max_d)
+            max_d = min_d;
+        }
+    }
+
+    if (max_d <= 1e-6f)
+    return;
+
+    // Downsample & blend
+    uint8_t* dst = buffer_info.bytes;
+    const float inv_samples = 1.0f / (float)(supersample * supersample);
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+
+            float sum_coverage = 0.0f;
+            float d_weighted   = 0.0f;
+
+            for (int sy = 0; sy < supersample; ++sy) {
+                const int cy = y * supersample + sy;
+                const size_t row_off = (size_t)cy * (size_t)s_width;
+                for (int sx = 0; sx < supersample; ++sx) {
+                    const int cx = x * supersample + sx;
+                    const float cov = coverage[row_off + (size_t)cx];
+                    if (cov <= 0.0f)
+                    continue;
+
+                    const float fx = (float)cx * inv_ss + half_ss;
+                    const float fy = (float)(s_height - cy - 1) * inv_ss + half_ss;
+
+                    float min_d = std::numeric_limits<float>::infinity();
+                    for (size_t i = 0; i < n; ++i) {
+                        const size_t j = (i + 1) % n;
+                        const float ax = flat_path[i].first;
+                        const float ay = flat_path[i].second;
+                        const float bx = flat_path[j].first;
+                        const float by = flat_path[j].second;
+                        const float d  = distance_point_to_segment(fx, fy, ax, ay, bx, by);
+                        if (d < min_d) min_d = d;
+                    }
+
+                    if (!std::isfinite(min_d))
+                    continue;
+
+                    d_weighted   += min_d * cov;
+                    sum_coverage += cov;
+                }
+            }
+
+            const float alpha = std::min(sum_coverage * inv_samples, 1.0f);
+            if (alpha <= 0.0f)
+            continue;
+
+            float t = (d_weighted / (sum_coverage + 1e-6f)) / max_d; // [0..1]
+            t = clamp(t, 0.0f, 1.0f);
+
+            uint8_t sr = (uint8_t)((1.0f - t) * r_outer + t * r_inner);
+            uint8_t sg = (uint8_t)((1.0f - t) * g_outer + t * g_inner);
+            uint8_t sb = (uint8_t)((1.0f - t) * b_outer + t * b_inner);
+            uint8_t sa = (uint8_t)((1.0f - t) * a_outer + t * a_inner);
 
             sa = (uint8_t)(sa * alpha);
 
@@ -273,16 +450,16 @@ void mask_path(
     const int channels    = buffer_info.channels;
 
     if (channels != 4 || width <= 0 || height <= 0)
-        return;
+    return;
 
     PathPointList* path_points = get_path_points(buffer_info.path_handle);
     if (!path_points || path_points->points.empty())
-        return;
+    return;
 
     std::vector<std::pair<float, float>> flat_path;
     flatten_path(path_points->points, flat_path);
     if (flat_path.empty())
-        return;
+    return;
 
     const int s_width  = width  * supersample;
     const int s_height = height * supersample;
@@ -313,7 +490,7 @@ void mask_path(
             const float w = inverted ? (1.0f - c) : c;      // blend weight toward alpha=2
 
             if (w <= 0.0f)
-                continue; // nothing to change for this pixel
+            continue; // nothing to change for this pixel
 
             const int idx   = (y * width + x) * channels;
             const uint8_t old_a = dst[idx + 3];
@@ -328,7 +505,7 @@ void mask_path(
             uint8_t new_a = (uint8_t)clamp<int>(int(std::lround(new_a_f)), 0, 255);
 
             if (new_a == old_a)
-                continue;
+            continue;
 
             if (premul) {
                 if (old_a == 0) {
@@ -352,4 +529,3 @@ void mask_path(
         }
     }
 }
-

@@ -11,16 +11,16 @@ function M.point(x, y)
     }
 end
 
-function M.quadCurvePoint(point, controlPoint)
+function M.quad_curve_point(point, control_point)
     return {
         x = point.x,
         y = point.y,
-        cx = controlPoint.x,
-        cy = controlPoint.y
+        cx = control_point.x,
+        cy = control_point.y
     }
 end
 
-function M.arcPoint(center, radius, start_angle, end_angle, clockwise)
+function M.arc_point(center, radius, start_angle, end_angle, clockwise)
     return {
         center_x = center.x,
         center_y = center.y,
@@ -39,11 +39,11 @@ function M.zero()
 end
 
 function M.white(alpha)
-    return color_helper.rgbaToColor(255, 255, 255, alpha or 1)
+    return color_helper.rgba_to_color(255, 255, 255, alpha or 1)
 end
 
 function M.black(alpha)
-    return color_helper.rgbaToColor(0, 0, 0, alpha or 1)
+    return color_helper.rgba_to_color(0, 0, 0, alpha or 1)
 end
 
 --Adds points based on points table
@@ -65,13 +65,13 @@ end
 function M.rounded_rect(handle, left, top, width, height, edge_radius)
     M.polygon(handle, {
         M.point(left + width - edge_radius, top),
-        M.quadCurvePoint(M.point(left + width, top + edge_radius), M.point(left + width, top)),
+        M.quad_curve_point(M.point(left + width, top + edge_radius), M.point(left + width, top)),
         M.point(left + width, top + height - edge_radius),
-        M.quadCurvePoint(M.point(left + width - edge_radius, top + height), M.point(left + width, top + height)),
+        M.quad_curve_point(M.point(left + width - edge_radius, top + height), M.point(left + width, top + height)),
         M.point(left + edge_radius, top + height),
-        M.quadCurvePoint(M.point(left, top + height - edge_radius), M.point(left, top + height)),
+        M.quad_curve_point(M.point(left, top + height - edge_radius), M.point(left, top + height)),
         M.point(left, top + edge_radius),
-        M.quadCurvePoint(M.point(left + edge_radius, top), M.point(left, top))
+        M.quad_curve_point(M.point(left + edge_radius, top), M.point(left, top))
     }, true)
 end
 
@@ -84,17 +84,17 @@ function M.circle(handle, left, top, radius_x, radius_y)
 
         M.polygon(handle, {
             M.point(cx + r, cy),
-            M.arcPoint(M.point(cx, cy), r, 0.0, math.pi * 2.0, false),
+            M.arc_point(M.point(cx, cy), r, 0.0, math.pi * 2.0, false),
         }, true)
         return
     end
 
     -- Otherwise keep ellipse approximation with 4 quadratics
     M.polygon(handle, {
-        M.quadCurvePoint(M.point(left + radius_x, top), M.point(left, top)),
-        M.quadCurvePoint(M.point(left + radius_x * 2, top + radius_y), M.point(left + radius_x * 2,  top)),
-        M.quadCurvePoint(M.point(left + radius_x, top + radius_y * 2), M.point(left + radius_x * 2,  top + radius_y * 2)),
-        M.quadCurvePoint(M.point(left, top + radius_y), M.point(left, top + radius_y * 2)),
+        M.quad_curve_point(M.point(left + radius_x, top), M.point(left, top)),
+        M.quad_curve_point(M.point(left + radius_x * 2, top + radius_y), M.point(left + radius_x * 2,  top)),
+        M.quad_curve_point(M.point(left + radius_x, top + radius_y * 2), M.point(left + radius_x * 2,  top + radius_y * 2)),
+        M.quad_curve_point(M.point(left, top + radius_y), M.point(left, top + radius_y * 2)),
     }, true)
 end
 
@@ -116,9 +116,9 @@ function M.pill(handle, left, top, width, height)
         M.polygon(handle, {
             M.point(cxL, top),
             M.point(cxR, top),
-            M.arcPoint(M.point(cxR, cy), r, -math.pi/2, math.pi/2, false),
+            M.arc_point(M.point(cxR, cy), r, -math.pi/2, math.pi/2, false),
             M.point(cxL, top + height),
-            M.arcPoint(M.point(cxL, cy), r,  math.pi/2, -math.pi/2, false)
+            M.arc_point(M.point(cxL, cy), r,  math.pi/2, -math.pi/2, false)
         }, true)
     else
         -- Vertical pill: semicircles on top/bottom, radius = width/2
@@ -131,9 +131,9 @@ function M.pill(handle, left, top, width, height)
         M.polygon(handle, {
             M.point(left + width, cyT),
             M.point(left + width, cyB),
-            M.arcPoint(M.point(cx, cyB), r, 0.0, math.pi, false),
+            M.arc_point(M.point(cx, cyB), r, 0.0, math.pi, false),
             M.point(left, cyT),
-            M.arcPoint(M.point(cx, cyT), r, math.pi, math.pi * 2.0, false)
+            M.arc_point(M.point(cx, cyT), r, math.pi, math.pi * 2.0, false)
         }, true)
     end
 end
@@ -166,6 +166,10 @@ end
 
 function M.delete_path(handle)
     bezierpath.delete_path(handle)
+end
+
+function M.clear_all_paths()
+    bezierpath.clear_all_paths()
 end
 
 function M.reset_path(handle)
@@ -209,6 +213,15 @@ function M.fill_path_gradient(buffer_info, color1, color2, angle)
         color1.r, color1.g, color1.b, color1.a,
         color2.r, color2.g, color2.b, color2.a,
         angle
+    )
+end
+
+--Fill the current path with a gradient along the form of the shape
+function M.fill_path_gradient_shape(buffer_info, color1, color2)
+    bezierpath.fill_path_gradient_shape(
+        buffer_info,
+        color1.r, color1.g, color1.b, color1.a,
+        color2.r, color2.g, color2.b, color2.a
     )
 end
 

@@ -219,6 +219,23 @@ static int fill_path_gradient_lua(lua_State* L) {
     return 0;
 }
 
+static int fill_path_gradient_shape_lua(lua_State* L) {
+    int top = lua_gettop(L);
+
+    BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
+
+    int r1, g1, b1, a1;
+    read_color(L, 2, r1, g1, b1, a1);
+
+    int r2, g2, b2, a2;
+    read_color(L, 6, r2, g2, b2, a2);
+
+    fill_path_gradient_shape(buffer_info, r1, g1, b1, a1, r2, g2, b2, a2);
+
+    assert(top == lua_gettop(L));
+    return 0;
+}
+
 static int fill_shadow_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -332,11 +349,19 @@ static int delete_path_lua(lua_State* L) {
     return 0;
 }
 
+static int clear_all_paths_lua(lua_State* L) {
+    int top = lua_gettop(L);
+    clear_all_paths();
+    assert(top == lua_gettop(L));
+    return 0;}
+
+
 // Functions exposed to Lua
 static const luaL_reg Module_methods[] = {
     {"fill_color", fill_color_lua},
     {"create_path", create_path_lua},
     {"delete_path", delete_path_lua},
+    {"clear_all_paths", clear_all_paths_lua},
     {"reset_path", reset_path_lua},
     {"add_point", add_point_lua},
     {"add_quad_curve_point", add_quad_curve_point_lua},
@@ -345,6 +370,7 @@ static const luaL_reg Module_methods[] = {
     {"init_buffer", init_buffer_lua},
     {"fill_path", fill_path_lua},
     {"fill_path_gradient", fill_path_gradient_lua},
+    {"fill_path_gradient_shape", fill_path_gradient_shape_lua},
     {"fill_shadow", fill_shadow_lua},
     {"mask_path", mask_path_lua},
     {"stroke_path", stroke_path_lua},

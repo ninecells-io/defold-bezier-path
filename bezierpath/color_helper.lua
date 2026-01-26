@@ -1,6 +1,6 @@
 local M = {}
 
-function M.rgbaToColor(red, green, blue, alpha)
+function M.rgba_to_color(red, green, blue, alpha)
 	return {
 		r = red,
 		g = green,
@@ -9,7 +9,7 @@ function M.rgbaToColor(red, green, blue, alpha)
 	}
 end
 
-function M.hexToColor(hex, alpha)
+function M.hex_to_color(hex, alpha)
 	-- accept string or number (e.g., 0xffaabb)
 	local s = type(hex) == "number" and string.format("%x", hex) or tostring(hex)
 
@@ -50,10 +50,10 @@ function M.hexToColor(hex, alpha)
 		a = a / 255
 	end
 
-	return M.rgbaToColor(r, g, b, a)
+	return M.rgba_to_color(r, g, b, a)
 end
 
-function M:colorToVector(color, alpha)
+function M:to_vector(color, alpha)
 	return vmath.vector4(
 		color.r / 255,
 		color.g / 255,
@@ -70,7 +70,7 @@ local function clamp(x, lo, hi)
 end
 
 -- RGB (0–1) → HSV (0–1)
-function M:rgb_to_hsv(r, g, b)
+function M.rgb_to_hsv(r, g, b)
 	local maxc = math.max(r, g, b)
 	local minc = math.min(r, g, b)
 	local v = maxc
@@ -95,7 +95,7 @@ function M:rgb_to_hsv(r, g, b)
 end
 
 -- HSV (0–1) → RGB (0–1)
-function M:hsv_to_rgb(h, s, v)
+function M.hsv_to_rgb(h, s, v)
 	if s == 0 then return v, v, v end
 	h = (h % 1) * 6
 	local i = math.floor(h)
@@ -115,7 +115,7 @@ end
 -- Swift's spreadColor in Lua
 -- color: table {r, g, b, a} where r/g/b are either 0–1 or 0–255
 -- spreadFactor: amount to subtract/add to brightness (0–1)
-function M:spreadColor(color, spreadFactor)
+function M.spread_color(color, spreadFactor)
 -- Validate input
 	if
 		type(color) ~= "table" or
@@ -133,12 +133,12 @@ function M:spreadColor(color, spreadFactor)
 	local g = clamp(color.g / scale, 0, 1)
 	local b = clamp(color.b / scale, 0, 1)
 
-	local h, s, v = M:rgb_to_hsv(r, g, b)
+	local h, s, v = M.rgb_to_hsv(r, g, b)
 	local vd = clamp(v - spreadFactor, 0, 1)
 	local vl = clamp(v + spreadFactor, 0, 1)
 
-	local dr, dg, db = M:hsv_to_rgb(h, s, vd)
-	local lr, lg, lb = M:hsv_to_rgb(h, s, vl)
+	local dr, dg, db = M.hsv_to_rgb(h, s, vd)
+	local lr, lg, lb = M.hsv_to_rgb(h, s, vl)
 
 	local a = 1
 

@@ -11,6 +11,9 @@ function bezierpath.create_path(buffer_info) end
 --Delete path record
 function bezierpath.delete_path(handle) end
 
+--Clear all stored paths
+function bezierpath.clear_all_paths() end
+
 --Resets the current path array
 function bezierpath.reset_path(handle) end
 
@@ -34,6 +37,9 @@ function bezierpath.fill_path(buffer_info, red, green, blue, alpha) end
 
 --Fill the current path with a gradient
 function bezierpath.fill_path_gradient(buffer_info, red1, green1, blue1, alpha1, red2, green2, blue2, alpha2, angle) end
+
+--Fill the current path with a gradient along the form of the shape
+function bezierpath.fill_path_gradient_shape(buffer_info, red1, green1, blue1, alpha1, red2, green2, blue2, alpha2) end
 
 --Mask the inside or outside of the current path with alpha = 0
 function bezierpath.mask_path(buffer_info, inverted) end

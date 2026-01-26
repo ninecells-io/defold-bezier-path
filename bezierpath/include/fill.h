@@ -20,3 +20,8 @@ void fill_path_gradient(
     int r2, int g2, int b2, int a2,
     float angle_deg
 );
+void fill_path_gradient_shape(
+    const BufferInfo& buffer_info,
+    int r1, int g1, int b1, int a1,
+    int r2, int g2, int b2, int a2
+);

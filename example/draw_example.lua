@@ -8,16 +8,16 @@ function M.draw(sprite)
 	local height = 512
 	local channels = 4
 
-	local handle = bp.create_path()
-
 	-- we have to create table with next fields: buffer, width, height, channels
 	local buffer_info = {
 		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = channels}}),
 		width = width,
 		height = height,
 		channels = channels, -- 3 for rgb, 4 for rgba
-		path_handle = handle
 	}
+
+	local handle = bp.create_path(buffer_info)
+
 	local resource_path = go.get(sprite, "texture0")
 	local header = {
 		width = width,
@@ -26,13 +26,13 @@ function M.draw(sprite)
 		format = resource.TEXTURE_FORMAT_RGBA,
 		num_mip_maps = 1
 	}
-	bp.init_buffer(buffer_info, color_helper.rgbaToColor(100, 100, 100, 128)) -- Semi-transparent grey
+	bp.init_buffer(buffer_info, color_helper.rgba_to_color(100, 100, 100, 128)) -- Semi-transparent grey
 
 	bp.rounded_rect(handle, 20, 20, 300, 250, 32)
 	bp.fill_path_gradient(
 		buffer_info,
-		color_helper.rgbaToColor(150, 150, 150, 255),
-		color_helper.rgbaToColor(150, 150, 150, 255),
+		color_helper.rgba_to_color(150, 150, 150, 255),
+		color_helper.rgba_to_color(150, 150, 150, 255),
 		45
 	)
 
@@ -40,8 +40,8 @@ function M.draw(sprite)
 	bp.fill_shadow(buffer_info, bp.zero(), 20, false, bp.black(0.8))
 	bp.fill_path_gradient(
 		buffer_info,
-		color_helper.rgbaToColor(255, 0, 0, 200),
-		color_helper.rgbaToColor(0, 0, 255, 200),
+		color_helper.rgba_to_color(255, 0, 0, 200),
+		color_helper.rgba_to_color(0, 0, 255, 200),
 		45
 	)
 
@@ -49,10 +49,10 @@ function M.draw(sprite)
 	bp.stroke_path(buffer_info, 4, bp.white(0.8), "center", "round")
 
 	bp.rounded_rect(handle, 240, 240, 200, 55, 16)
-	bp.fill_shadow(buffer_info, bp.zero(), 10, false, color_helper.rgbaToColor(0, 0, 0, 222))
+	bp.fill_shadow(buffer_info, bp.zero(), 10, false, color_helper.rgba_to_color(0, 0, 0, 222))
 	bp.fill_path(
 		buffer_info,
-		color_helper.rgbaToColor(0, 255, 0, 150)
+		color_helper.rgba_to_color(0, 255, 0, 150)
 	)
 	bp.stroke_path(
 		buffer_info,
@@ -68,7 +68,7 @@ function M.draw(sprite)
 		bp.point(400, 400)
 	})
 
-	bp.stroke_path(buffer_info, 20, color_helper.rgbaToColor(255, 0, 0, 255), "center", "round", "round")
+	bp.stroke_path(buffer_info, 20, color_helper.rgba_to_color(255, 0, 0, 255), "center", "round", "round")
 
 	resource.set_texture(resource_path, header, buffer_info.buffer)
 
@@ -88,27 +88,26 @@ function M.drawGui()
 	gui.set_size_mode(parent, gui.SIZE_MODE_MANUAL)
 	gui.set_visible(parent, true)
 	
-	--local color = color_helper.rgbaToColor(255, 0, 0, 255)
-	--M.addBox(512, 512, color, color_helper.rgbaToColor(0, 0, 255, 255), "box1", parent)
+	--local color = color_helper.rgba_to_color(255, 0, 0, 255)
+	--M.addBox(512, 512, color, color_helper.rgba_to_color(0, 0, 255, 255), "box1", parent)
 
-	M.circle(512, 512, color_helper.rgbaToColor(0, 0, 255, 255), color_helper.rgbaToColor(0, 0, 200, 255), "circle", parent)
-	M.pill(512, 512, color_helper.rgbaToColor(0, 0, 255, 255), color_helper.rgbaToColor(0, 0, 200, 255), "pill", parent)
+	--M.circle(512, 512, color_helper.rgba_to_color(0, 0, 255, 255), color_helper.rgba_to_color(0, 0, 200, 255), "circle", parent)
+	M.pill(130, 250, color_helper.rgba_to_color(255, 0, 0, 1), color_helper.rgba_to_color(0, 0, 200, 1), "pill", parent)
 end
 
 function M.addBox(width, height, color, color2, name, parent)
-	local handle = bp.create_path()
 	local buffer_info = {
 		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = 4}}),
 		width = width,
 		height = height,
 		channels = 4,
-		premultiply_alpha = true,
-		path_handle = handle
+		premultiply_alpha = true
 	}
+	local handle = bp.create_path(buffer_info)
 	bp.init_buffer(buffer_info, bp.black(0))
 	bp.rounded_rect(handle, 60, 200, 300, 300, 8)
 	bp.fill_path_gradient(buffer_info, color, color2, 45)
-	bp.fill_shadow(buffer_info, bp.point(4, 20), 28, true, bp.black(0.6))
+	bp.fill_shadow(buffer_info, bp.point(), 28, true, bp.black(0.6))
 
 	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
 	--bp.mask_path(buffer_info, false)
@@ -136,20 +135,22 @@ function M.addBox(width, height, color, color2, name, parent)
 end
 
 function M.pill(width, height, color, color2, name, parent)
-	local handle = bp.create_path()
 	local buffer_info = {
 		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = 4}}),
 		width = width,
 		height = height,
 		channels = 4,
-		premultiply_alpha = true,
-		path_handle = handle
+		premultiply_alpha = true
 	}
+	local handle = bp.create_path(buffer_info)
 	bp.init_buffer(buffer_info, bp.black(0))
-	bp.pill(handle, 120, 120, 80, 200)
-	bp.fill_path_gradient(buffer_info, color, color2, 45)
-	bp.fill_shadow(buffer_info, bp.point(4, -4), 28, true, bp.black(0.6))
-
+	bp.pill(handle, 0, 0, width, height)
+	--bp.fill_path_gradient(buffer_info, color, color2, 45)
+	bp.fill_path_gradient_shape(buffer_info, color, color2)
+	
+	--bp.fill_path(buffer_info, color)
+	--bp.fill_shadow(buffer_info, bp.point(0, 0), 28, true, bp.black(0.6))
+	
 	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
 	--bp.mask_path(buffer_info, false)
 
@@ -176,15 +177,14 @@ function M.pill(width, height, color, color2, name, parent)
 end
 
 function M.circle(width, height, color, color2, name, parent)
-	local handle = bp.create_path()
 	local buffer_info = {
 		buffer = buffer.create(width * height, {{name = hash("rgba"), type = buffer.VALUE_TYPE_UINT8, count = 4}}),
 		width = width,
 		height = height,
 		channels = 4,
-		premultiply_alpha = true,
-		path_handle = handle
+		premultiply_alpha = true
 	}
+	local handle = bp.create_path(buffer_info)
 	bp.init_buffer(buffer_info, bp.black(0))
 	bp.circle(handle, 120, 300, 80, 80)
 	bp.fill_shadow(buffer_info, bp.point(20, 20), 28, false, bp.black(0.5))
