@@ -1,5 +1,12 @@
 local M = {}
 
+-- Clamp helper
+local function clamp(x, lo, hi)
+	if x < lo then return lo end
+	if x > hi then return hi end
+	return x
+end
+
 function M.rgba_to_color(red, green, blue, alpha)
 	return {
 		r = red,
@@ -53,7 +60,30 @@ function M.hex_to_color(hex, alpha)
 	return M.rgba_to_color(r, g, b, a)
 end
 
-function M:to_vector(color, alpha)
+function M.color_to_hex(color)
+	-- color.r/g/b: 0..255, color.a: 0..1
+	local r = math.floor(color.r or 0)
+	local g = math.floor(color.g or 0)
+	local b = math.floor(color.b or 0)
+	local a = color.a
+
+	-- clamp values to valid ranges
+	r = clamp(r, 0, 255)
+	g = clamp(g, 0, 255)
+	b = clamp(b, 0, 255)
+	if a == nil then a = 1 end
+	if type(a) ~= "number" then a = 1 end
+	a = clamp(a, 0, 1)
+
+	if a >= 1 then
+		return string.format("#%02x%02x%02x", r, g, b)
+	else
+		local ai = math.floor(a * 255 + 0.5)
+		return string.format("#%02x%02x%02x%02x", r, g, b, ai)
+	end
+end
+
+function M.to_vector(color, alpha)
 	return vmath.vector4(
 		color.r / 255,
 		color.g / 255,
@@ -62,15 +92,12 @@ function M:to_vector(color, alpha)
 	)
 end
 
--- Clamp helper
-local function clamp(x, lo, hi)
-	if x < lo then return lo end
-	if x > hi then return hi end
-	return x
-end
-
 -- RGB (0–1) → HSV (0–1)
 function M.rgb_to_hsv(r, g, b)
+	r = r / 255
+	g = g / 255
+	b = b / 255
+
 	local maxc = math.max(r, g, b)
 	local minc = math.min(r, g, b)
 	local v = maxc
@@ -96,13 +123,21 @@ end
 
 -- HSV (0–1) → RGB (0–1)
 function M.hsv_to_rgb(h, s, v)
-	if s == 0 then return v, v, v end
+	if s == 0 then
+		v = clamp(math.floor(v * 255 + 0.5), 0, 255)
+		return v, v, v
+	end
 	h = (h % 1) * 6
 	local i = math.floor(h)
 	local f = h - i
 	local p = v * (1 - s)
 	local q = v * (1 - s * f)
 	local t = v * (1 - s * (1 - f))
+
+	v = clamp(math.floor(v * 255 + 0.5), 0, 255)
+	t = clamp(math.floor(t * 255 + 0.5), 0, 255)
+	p = clamp(math.floor(p * 255 + 0.5), 0, 255)
+	q = clamp(math.floor(q * 255 + 0.5), 0, 255)
 
 	if i == 0 then return v, t, p
 	elseif i == 1 then return q, v, p
@@ -112,10 +147,31 @@ function M.hsv_to_rgb(h, s, v)
 	else return v, p, q end
 end
 
+function M.modify_color(color, mod_h, mod_s, mod_v, mode)
+	local h, s, v = M.rgb_to_hsv(color.r, color.g, color.b)
+	local r, g, b
+	if mode == "multiply" then
+		r, g, b = M.hsv_to_rgb(
+			mod_h and h * mod_h or h,
+			mod_s and s * mod_s or s,
+			mod_v and v * mod_v or v
+		)
+	elseif mode == "addition" then
+		r, g, b = M.hsv_to_rgb(
+			mod_h and h + mod_h or h,
+			mod_s and s + mod_s or s,
+			mod_v and v + mod_v or v
+		)
+	else
+		r, g, b = M.hsv_to_rgb(mod_h or h, mod_s or s, mod_v or v)
+	end
+	return M.rgba_to_color(r, g, b, color.a)
+end
+
 -- Swift's spreadColor in Lua
 -- color: table {r, g, b, a} where r/g/b are either 0–1 or 0–255
 -- spreadFactor: amount to subtract/add to brightness (0–1)
-function M.spread_color(color, spreadFactor)
+function M.spread_color(color, factor)
 -- Validate input
 	if
 		type(color) ~= "table" or
@@ -127,33 +183,32 @@ function M.spread_color(color, spreadFactor)
 		return { darker = color, lighter = color }
 	end
 
-	-- Normalize to 0–1 if needed
-	local scale = 255
-	local r = clamp(color.r / scale, 0, 1)
-	local g = clamp(color.g / scale, 0, 1)
-	local b = clamp(color.b / scale, 0, 1)
+	-- Use 0..255 inputs consistently: `rgb_to_hsv` expects 0..255 values
+	local r = clamp(color.r, 0, 255)
+	local g = clamp(color.g, 0, 255)
+	local b = clamp(color.b, 0, 255)
 
 	local h, s, v = M.rgb_to_hsv(r, g, b)
-	local vd = clamp(v - spreadFactor, 0, 1)
-	local vl = clamp(v + spreadFactor, 0, 1)
+	local vd = clamp(v - factor, 0, 1)
+	local vl = clamp(v + factor, 0, 1)
 
 	local dr, dg, db = M.hsv_to_rgb(h, s, vd)
 	local lr, lg, lb = M.hsv_to_rgb(h, s, vl)
 
-	local a = 1
+	local a = color.a or 1
 
-	-- Return in the same scale as input
+	-- `hsv_to_rgb` returns 0..255 values here; round and return those
 	return {
-		darker  = {
-			r = math.floor(dr * scale),
-			g = math.floor(dg * scale),
-			b = math.floor(db * scale),
+		darker = {
+			r = math.floor(dr + 0.5),
+			g = math.floor(dg + 0.5),
+			b = math.floor(db + 0.5),
 			a = a
 		},
 		lighter = {
-			r = math.floor(lr * scale),
-			g = math.floor(lg * scale),
-			b = math.floor(lb * scale),
+			r = math.floor(lr + 0.5),
+			g = math.floor(lg + 0.5),
+			b = math.floor(lb + 0.5),
 			a = a
 		},
 	}
