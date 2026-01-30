@@ -214,4 +214,30 @@ function M.spread_color(color, factor)
 	}
 end
 
+function M.is_dark(color, g, b)
+
+	-- Accept either a color table (`{r,g,b}` or `{r=..,g=..,b=..}`) or three numeric args.
+	local r
+	if type(color) == "table" then
+		r = color.r or color[1] or 0
+		g = color.g or color[2] or 0
+		b = color.b or color[3] or 0
+	else
+		r = color or 0
+		g = g or 0
+		b = b or 0
+	end
+
+	-- Ensure values are in 0..255 range; alpha is deliberately ignored
+	r = clamp(r, 0, 255)
+	g = clamp(g, 0, 255)
+	b = clamp(b, 0, 255)
+
+	-- Perceived luminance (BT.601): 0.299 R + 0.587 G + 0.114 B
+	local luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+	-- Consider dark if luminance is below midpoint (128)
+	return luminance < 128
+end
+
 return M
