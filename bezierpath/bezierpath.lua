@@ -38,14 +38,6 @@ function M.zero()
     }
 end
 
-function M.white(alpha)
-    return color_helper.rgba_to_color(255, 255, 255, alpha or 1)
-end
-
-function M.black(alpha)
-    return color_helper.rgba_to_color(0, 0, 0, alpha or 1)
-end
-
 --Adds points based on points table
 function M.polygon(handle, points, closed)
     bezierpath.reset_path(handle)

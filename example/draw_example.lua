@@ -46,7 +46,7 @@ function M.draw(sprite)
 	)
 
 	bp.line(handle, bp.point(110, 120), bp.point(390, 120))
-	bp.stroke_path(buffer_info, 4, bp.white(0.8), "center", "round")
+	bp.stroke_path(buffer_info, 4, color_helper.white(0.8), "center", "round")
 
 	bp.rounded_rect(handle, 240, 240, 200, 55, 16)
 	bp.fill_shadow(buffer_info, bp.zero(), 10, false, color_helper.rgba_to_color(0, 0, 0, 222))
