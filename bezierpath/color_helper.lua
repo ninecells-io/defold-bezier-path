@@ -92,18 +92,23 @@ function M.to_vector(color, alpha)
 	)
 end
 
--- RGB (0–1) → HSV (0–1)
-function M.rgb_to_hsv(r, g, b)
+function M.rgb_to_hsl(r, g, b)
 	r = r / 255
 	g = g / 255
 	b = b / 255
 
 	local maxc = math.max(r, g, b)
 	local minc = math.min(r, g, b)
-	local v = maxc
 	local delta = maxc - minc
 
-	local s = (maxc == 0) and 0 or (delta / maxc)
+	local l = (maxc + minc) / 2
+
+	local s
+	if delta == 0 then
+		s = 0
+	else
+		s = delta / (1 - math.abs(2 * l - 1))
+	end
 
 	local h
 	if delta == 0 then
@@ -115,55 +120,68 @@ function M.rgb_to_hsv(r, g, b)
 	else
 		h = ((r - g) / delta) + 4
 	end
+
 	h = (h / 6) % 1
 	if h < 0 then h = h + 1 end
 
-	return h, s, v
+	return h, s, l
 end
 
--- HSV (0–1) → RGB (0–1)
-function M.hsv_to_rgb(h, s, v)
+function M.hsl_to_rgb(h, s, l)
+	local r, g, b
+
 	if s == 0 then
-		v = clamp(math.floor(v * 255 + 0.5), 0, 255)
-		return v, v, v
+		-- Achromatic (gray)
+		r = l
+		g = l
+		b = l
+	else
+		local function hue_to_rgb(p, q, t)
+			if t < 0 then t = t + 1 end
+			if t > 1 then t = t - 1 end
+			if t < 1/6 then return p + (q - p) * 6 * t end
+			if t < 1/2 then return q end
+			if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
+			return p
+		end
+
+		local q
+		if l < 0.5 then
+			q = l * (1 + s)
+		else
+			q = l + s - l * s
+		end
+		local p = 2 * l - q
+
+		r = hue_to_rgb(p, q, h + 1/3)
+		g = hue_to_rgb(p, q, h)
+		b = hue_to_rgb(p, q, h - 1/3)
 	end
-	h = (h % 1) * 6
-	local i = math.floor(h)
-	local f = h - i
-	local p = v * (1 - s)
-	local q = v * (1 - s * f)
-	local t = v * (1 - s * (1 - f))
 
-	v = clamp(math.floor(v * 255 + 0.5), 0, 255)
-	t = clamp(math.floor(t * 255 + 0.5), 0, 255)
-	p = clamp(math.floor(p * 255 + 0.5), 0, 255)
-	q = clamp(math.floor(q * 255 + 0.5), 0, 255)
-
-	if i == 0 then return v, t, p
-	elseif i == 1 then return q, v, p
-	elseif i == 2 then return p, v, t
-	elseif i == 3 then return p, q, v
-	elseif i == 4 then return t, p, v
-	else return v, p, q end
+	-- Convert back to 0–255
+	return
+		math.floor(r * 255 + 0.5),
+		math.floor(g * 255 + 0.5),
+		math.floor(b * 255 + 0.5)
 end
 
-function M.modify_color(color, mod_h, mod_s, mod_v, mode)
-	local h, s, v = M.rgb_to_hsv(color.r, color.g, color.b)
+function M.modify_color(color, mod_h, mod_s, mod_l, mode)
+	local h, s, l = M.rgb_to_hsl(color.r, color.g, color.b)
 	local r, g, b
 	if mode == "multiply" then
-		r, g, b = M.hsv_to_rgb(
+		r, g, b = M.hsl_to_rgb(
 			mod_h and h * mod_h or h,
 			mod_s and s * mod_s or s,
-			mod_v and v * mod_v or v
+			mod_l and l * mod_l or l
 		)
 	elseif mode == "addition" then
-		r, g, b = M.hsv_to_rgb(
+		r, g, b = M.hsl_to_rgb(
 			mod_h and h + mod_h or h,
 			mod_s and s + mod_s or s,
-			mod_v and v + mod_v or v
+			mod_l and l + mod_l or l
 		)
 	else
-		r, g, b = M.hsv_to_rgb(mod_h or h, mod_s or s, mod_v or v)
+		r, g, b = M.hsl_to_rgb(mod_h or h, mod_s or s, mod_l or l)
 	end
 	return M.rgba_to_color(r, g, b, color.a)
 end
@@ -183,21 +201,21 @@ function M.spread_color(color, factor)
 		return { darker = color, lighter = color }
 	end
 
-	-- Use 0..255 inputs consistently: `rgb_to_hsv` expects 0..255 values
+	-- Use 0..255 inputs consistently: `rgb_to_hsl` expects 0..255 values
 	local r = clamp(color.r, 0, 255)
 	local g = clamp(color.g, 0, 255)
 	local b = clamp(color.b, 0, 255)
 
-	local h, s, v = M.rgb_to_hsv(r, g, b)
+	local h, s, v = M.rgb_to_hsl(r, g, b)
 	local vd = clamp(v - factor, 0, 1)
 	local vl = clamp(v + factor, 0, 1)
 
-	local dr, dg, db = M.hsv_to_rgb(h, s, vd)
-	local lr, lg, lb = M.hsv_to_rgb(h, s, vl)
+	local dr, dg, db = M.hsl_to_rgb(h, s, vd)
+	local lr, lg, lb = M.hsl_to_rgb(h, s, vl)
 
 	local a = color.a or 1
 
-	-- `hsv_to_rgb` returns 0..255 values here; round and return those
+	-- `hsl_to_rgb` returns 0..255 values here; round and return those
 	return {
 		darker = {
 			r = math.floor(dr + 0.5),
