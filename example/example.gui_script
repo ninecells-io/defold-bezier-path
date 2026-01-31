@@ -1,5 +1,13 @@
 local m = require "example/draw_example"
+local bezierpath = require("bezierpath/bezierpath")
+local color_helper = require("defold_helpers.color_helper")
 
 function init(self)
 	m.drawGui()
+
+	local box = bezierpath.add_gui_box(nil, 200, 200, nil, true, "test", function(buffer)
+		local handle = bezierpath.create_path(buffer)
+		bezierpath.circle(handle, 0, 0, 100, 100)
+		bezierpath.fill_path(buffer, color_helper.black(0.5))
+	end)
 end

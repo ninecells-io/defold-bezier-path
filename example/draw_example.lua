@@ -1,5 +1,5 @@
 local bp = require("bezierpath/bezierpath")
-local color_helper = require("bezierpath.color_helper")
+local color_helper = require("defold_helpers.color_helper")
 
 local M = {}
 
@@ -37,7 +37,7 @@ function M.draw(sprite)
 	)
 
 	bp.rounded_rect(handle, 100, 60, 300, 250, 32)
-	bp.fill_shadow(buffer_info, bp.zero(), 20, false, bp.black(0.8))
+	bp.fill_shadow(buffer_info, bp.zero(), 20, false, color_helper.black(0.8))
 	bp.fill_path_gradient(
 		buffer_info,
 		color_helper.rgba_to_color(255, 0, 0, 200),
@@ -104,10 +104,10 @@ function M.addBox(width, height, color, color2, name, parent)
 		premultiply_alpha = true
 	}
 	local handle = bp.create_path(buffer_info)
-	bp.init_buffer(buffer_info, bp.black(0))
+	bp.init_buffer(buffer_info, color_helper.black(0))
 	bp.rounded_rect(handle, 60, 200, 300, 300, 8)
 	bp.fill_path_gradient(buffer_info, color, color2, 45)
-	bp.fill_shadow(buffer_info, bp.point(), 28, true, bp.black(0.6))
+	bp.fill_shadow(buffer_info, bp.point(), 28, true, color_helper.black(0.6))
 
 	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
 	--bp.mask_path(buffer_info, false)
@@ -143,13 +143,13 @@ function M.pill(width, height, color, color2, name, parent)
 		premultiply_alpha = true
 	}
 	local handle = bp.create_path(buffer_info)
-	bp.init_buffer(buffer_info, bp.black(0))
+	bp.init_buffer(buffer_info, color_helper.black(0))
 	bp.pill(handle, 0, 0, width, height)
 	--bp.fill_path_gradient(buffer_info, color, color2, 45)
 	bp.fill_path_gradient_shape(buffer_info, color, color2)
 	
 	--bp.fill_path(buffer_info, color)
-	--bp.fill_shadow(buffer_info, bp.point(0, 0), 28, true, bp.black(0.6))
+	--bp.fill_shadow(buffer_info, bp.point(0, 0), 28, true, color_helper.black(0.6))
 	
 	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
 	--bp.mask_path(buffer_info, false)
@@ -185,11 +185,11 @@ function M.circle(width, height, color, color2, name, parent)
 		premultiply_alpha = true
 	}
 	local handle = bp.create_path(buffer_info)
-	bp.init_buffer(buffer_info, bp.black(0))
+	bp.init_buffer(buffer_info, color_helper.black(0))
 	bp.circle(handle, 120, 300, 80, 80)
-	bp.fill_shadow(buffer_info, bp.point(20, 20), 28, false, bp.black(0.5))
+	bp.fill_shadow(buffer_info, bp.point(20, 20), 28, false, color_helper.black(0.5))
 	bp.fill_path_gradient(buffer_info, color, color2, 45)
-	bp.fill_shadow(buffer_info, bp.point(4, -4), 28, true, bp.black(0.6))
+	bp.fill_shadow(buffer_info, bp.point(4, -4), 28, true, color_helper.black(0.6))
 
 	--bp.rounded_rect(handle, 20, 20, 100, 100, 16)
 	--bp.mask_path(buffer_info, false)

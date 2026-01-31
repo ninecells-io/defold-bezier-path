@@ -1,4 +1,5 @@
-local color_helper = require("bezierpath.color_helper")
+local color_helper = require("defold_helpers.color_helper")
+local gui_helper = require("defold_helpers.gui_helper")
 
 local M = {}
 
@@ -230,6 +231,57 @@ end
 --Draw a glow effect along the path
 function M.stroke_path_glow(buffer_info, width, radius, position, color)
     bezierpath.stroke_path_glow(buffer_info, width, radius, position, color.r, color.g, color.b, color.a)
+end
+
+function M.draw_texture(width, height, draw, factor, params)
+    local channels = 4
+
+    local buffer_info = {
+        buffer = buffer.create(
+            width * height,
+            {{
+                name = hash("rgba"),
+                type = buffer.VALUE_TYPE_UINT8,
+                count = channels
+            }}
+        ),
+        width = width,
+        height = height,
+        channels = channels,
+        premultiply_alpha = true,
+        path_handle = 0,
+    }
+
+    M.init_buffer(buffer_info, color_helper.black(0))
+    draw(buffer_info, factor, params)
+
+    return buffer.get_bytes(buffer_info.buffer, hash("rgba"))
+end
+
+function M.add_gui_box(root, width, height, pos, visible, texture_name, draw, params)
+    local texture = M.draw_texture(width, height, draw, params)
+    local box = gui_helper.create_box_node(root, width, height, pos, nil, visible)
+    M.set_node_texture(box, width, height, texture_name, texture)
+
+    return box
+end
+
+function M.create_texture(width, height, name, texture, texture_size)
+    if texture ~= nil then
+        local w = texture_size and texture_size.width or width
+        local h = texture_size and texture_size.height or height
+        return gui.new_texture(name, w, h, image.TYPE_RGBA, texture)
+    end
+
+    return false
+end
+
+function M.set_node_texture(node, width, height, name, texture, texture_size)
+    if M.create_texture(width, height, name, texture, texture_size) then
+        gui.set_texture(node, name)
+    elseif texture ~= nil then
+        error("Unable to create texture")
+    end
 end
 
 return M
