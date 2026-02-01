@@ -1,6 +1,8 @@
 local color_helper = require("defold_helpers.color_helper")
 local gui_helper = require("defold_helpers.gui_helper")
 
+local default_texture_factor = 2
+
 local M = {}
 
 --HIGH LEVEL Methods
@@ -233,7 +235,7 @@ function M.stroke_path_glow(buffer_info, width, radius, position, color)
     bezierpath.stroke_path_glow(buffer_info, width, radius, position, color.r, color.g, color.b, color.a)
 end
 
-function M.draw_texture(width, height, draw, factor, params)
+function M.draw_texture(width, height, draw_fn, factor, params)
     local channels = 4
 
     local buffer_info = {
@@ -253,20 +255,20 @@ function M.draw_texture(width, height, draw, factor, params)
     }
 
     M.init_buffer(buffer_info, color_helper.black(0))
-    draw(buffer_info, factor, params)
+    draw_fn(buffer_info, factor, params)
 
     return buffer.get_bytes(buffer_info.buffer, hash("rgba"))
 end
 
-function M.add_gui_box(root, width, height, pos, visible, texture_name, draw, params)
-    local texture = M.draw_texture(width, height, draw, params)
+function M.add_gui_box(root, width, height, pos, visible, texture_name, draw_fn, params)
+    local texture = M.draw_texture(width, height, draw_fn, params)
     local box = gui_helper.create_box_node(root, width, height, pos, nil, visible)
     M.set_node_texture(box, width, height, texture_name, texture)
 
     return box
 end
 
-function M.create_texture(width, height, name, texture, texture_size)
+function M.new_texture(width, height, name, texture, texture_size)
     if texture ~= nil then
         local w = texture_size and texture_size.width or width
         local h = texture_size and texture_size.height or height
@@ -277,11 +279,32 @@ function M.create_texture(width, height, name, texture, texture_size)
 end
 
 function M.set_node_texture(node, width, height, name, texture, texture_size)
-    if M.create_texture(width, height, name, texture, texture_size) then
+    if M.new_texture(width, height, name, texture, texture_size) then
         gui.set_texture(node, name)
     elseif texture ~= nil then
         error("Unable to create texture")
     end
+end
+
+function M.create_texture(name, width, height, draw_fn, params, factor)
+
+    factor = factor or default_texture_factor
+
+	width = math.floor(width * factor)
+	height = math.floor(height * factor)
+
+    -- create an empty texture as replacement for a missing gui.texture_exists()
+	local should_create_texture = gui.new_texture(name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
+
+	if should_create_texture then
+		gui.delete_texture(name)
+		local texture = M.draw_texture(width, height, draw_fn, factor, params)
+		if not M.new_texture(width, height, name, texture) then
+            error("Unable to create texture")
+        end
+	end
+
+	return name
 end
 
 return M
