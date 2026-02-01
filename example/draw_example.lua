@@ -1,5 +1,5 @@
 local bp = require("bezierpath/bezierpath")
-local color_helper = require("defold_helpers.color_helper")
+local color_helper = require("helpers.color_helper")
 
 local M = {}
 

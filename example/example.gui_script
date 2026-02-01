@@ -1,6 +1,6 @@
 local m = require "example/draw_example"
 local bezierpath = require("bezierpath/bezierpath")
-local color_helper = require("defold_helpers.color_helper")
+local color_helper = require("helpers.color_helper")
 
 function init(self)
 	m.drawGui()

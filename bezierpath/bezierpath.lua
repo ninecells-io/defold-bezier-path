@@ -1,5 +1,5 @@
-local color_helper = require("defold_helpers.color_helper")
-local gui_helper = require("defold_helpers.gui_helper")
+local color_helper = require("helpers.color_helper")
+local gui_helper = require("helpers.gui_helper")
 
 local default_texture_factor = 2
 
