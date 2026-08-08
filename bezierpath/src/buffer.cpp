@@ -63,35 +63,20 @@ BufferInfo read_and_validate_buffer_info(lua_State *L, int index)
 
     lua_pop(L, 6);
 
+    buffer_info.origin_x = 0.0f;
+    buffer_info.origin_y = 0.0f;
+
+    lua_getfield(L, index, "origin_x");
+    if (lua_isnumber(L, -1)) {
+        buffer_info.origin_x = (float)lua_tonumber(L, -1);
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, index, "origin_y");
+    if (lua_isnumber(L, -1)) {
+        buffer_info.origin_y = (float)lua_tonumber(L, -1);
+    }
+    lua_pop(L, 1);
+
     return buffer_info;
-}
-
-int create_path() {
-    g_path_points.emplace_back(); // default PathPointList (empty, is_closed=false)
-    return static_cast<int>(g_path_points.size() - 1);
-}
-
-// Deletes the path at the given index (if valid)
-void delete_path(int index) {
-    if (index < 0 || static_cast<size_t>(index) >= g_path_points.size()) {
-        return; // silently ignore invalid index
-    }
-    g_path_points.erase(g_path_points.begin() + index);
-}
-
-void clear_all_paths() {
-    // Clear all path point lists
-    g_path_points.clear();
-
-    // Force capacity release
-    std::vector<PathPointList>().swap(g_path_points);
-}
-
-// Returns a copy of the PathPointList at the given index
-PathPointList* get_path_points(int index) {
-    if (index < 0 || static_cast<size_t>(index) >= g_path_points.size()) {
-        printf("The path points handle %d is invalid.", index);
-        return nullptr;
-    }
-    return &g_path_points[index];
 }

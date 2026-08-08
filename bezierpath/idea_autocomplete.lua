@@ -11,6 +11,9 @@ function bezierpath.create_path(buffer_info) end
 --Delete path record
 function bezierpath.delete_path(handle) end
 
+--Return the flattened path bounds with optional padding
+function bezierpath.get_path_bounds(handle, padding) end
+
 --Clear all stored paths
 function bezierpath.clear_all_paths() end
 

@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <string>
 #include <stack>
+#include <unordered_map>
+#include <utility>
 #include "utils.h"
 #include "buffer.h"
 #include "shadow.h"
@@ -13,26 +15,34 @@
 
 static inline float fast_exp(float x) { return expf(x); } // keep separate in case you swap impls
 
+static const std::vector<float>& gaussian_kernel(int radius) {
+    static std::unordered_map<int, std::vector<float> > kernels;
+    std::unordered_map<int, std::vector<float> >::iterator found = kernels.find(radius);
+    if (found != kernels.end()) return found->second;
+
+    const int kernel_size = 2 * radius + 1;
+    std::vector<float> kernel((size_t)kernel_size);
+    const float sigma = radius / 2.0f;
+    const float two_sigma2 = 2.0f * sigma * sigma;
+    float sum = 0.0f;
+    for (int i = 0; i < kernel_size; ++i) {
+        const int x = i - radius;
+        const float weight = fast_exp(-(x * x) / two_sigma2);
+        kernel[(size_t)i] = weight;
+        sum += weight;
+    }
+    const float inv_sum = 1.0f / sum;
+    for (int i = 0; i < kernel_size; ++i) kernel[(size_t)i] *= inv_sum;
+    return kernels.emplace(radius, std::move(kernel)).first->second;
+}
+
 void gaussian_blur(std::vector<float>& image, int width, int height, int radius, bool clamp_edges)
 {
     if (radius <= 0 || width <= 0 || height <= 0) return;
 
-    const int kernel_size = 2 * radius + 1;
-    std::vector<float> kernel(kernel_size);
-    const float sigma = radius / 2.0f;
-    const float two_sigma2 = 2.0f * sigma * sigma;
-
-    float sum = 0.0f;
-    for (int i = 0; i < kernel_size; ++i) {
-        const int x = i - radius;
-        const float w = fast_exp(-(x * x) / two_sigma2);
-        kernel[i] = w;
-        sum += w;
-    }
-    const float inv_sum = 1.0f / sum;
-    for (int i = 0; i < kernel_size; ++i) kernel[i] *= inv_sum;
-
-    std::vector<float> temp((size_t)width * (size_t)height);
+    const std::vector<float>& kernel = gaussian_kernel(radius);
+    std::vector<float>& temp = get_raster_scratch().temp;
+    temp.assign((size_t)width * (size_t)height, 0.0f);
 
     auto sample_h = [&](const float* rowp, int sx) -> float {
         if (clamp_edges) {
@@ -163,53 +173,46 @@ void fill_shadow(
     int r, int g, int b, int a,
     bool inner // false=outer drop shadow, true=inner shadow
 ) {
-    const int supersample = 4;
     const int width    = buffer_info.width;
     const int height   = buffer_info.height;
     const int channels = buffer_info.channels;
     const bool premul  = buffer_info.premultiply_alpha;
 
     PathPointList* path_points = get_path_points(buffer_info.path_handle);
-    if (!path_points || path_points->points.empty() || width <= 0 || height <= 0)
-        return;
+    const SampleMask* sample_mask = get_fill_sample_mask(buffer_info, path_points);
+    if (!sample_mask || sample_mask->empty() || width <= 0 || height <= 0) return;
 
-    std::vector<std::pair<float, float>> flat_path;
-    flatten_path(path_points->points, flat_path);
-    if (flat_path.empty())
-        return;
+    const int radius = std::max(0, blur_radius);
+    const int blur_x0 = std::max(0, sample_mask->x - radius);
+    const int blur_y0 = std::max(0, sample_mask->y - radius);
+    const int blur_x1 = std::min(width, sample_mask->x + sample_mask->width + radius);
+    const int blur_y1 = std::min(height, sample_mask->y + sample_mask->height + radius);
+    const int blur_width = blur_x1 - blur_x0;
+    const int blur_height = blur_y1 - blur_y0;
+    if (blur_width <= 0 || blur_height <= 0) return;
 
-    // --- 1) Supersampled coverage
-    const int s_width  = width  * supersample;
-    const int s_height = height * supersample;
-    std::vector<float> coverage((size_t)s_width * (size_t)s_height, 0.0f);
-    rasterize_polygon_to_coverage(buffer_info, flat_path, coverage, supersample);
-
-    // --- 2) Downsample to mask M in [0..1]
-    std::vector<float> mask((size_t)width * (size_t)height, 0.0f);
-    const float inv_samples = 1.0f / float(supersample * supersample);
-    for (int y = 0; y < height; ++y) {
-        const int cy0 = y * supersample;
-        float* mrow = &mask[(size_t)y * (size_t)width];
-        for (int x = 0; x < width; ++x) {
-            const int cx0 = x * supersample;
-            float sum = 0.0f;
-            const float* crow0 = &coverage[(size_t)(cy0 + 0) * (size_t)s_width + (size_t)cx0];
-            const float* crow1 = &coverage[(size_t)(cy0 + 1) * (size_t)s_width + (size_t)cx0];
-            const float* crow2 = &coverage[(size_t)(cy0 + 2) * (size_t)s_width + (size_t)cx0];
-            const float* crow3 = &coverage[(size_t)(cy0 + 3) * (size_t)s_width + (size_t)cx0];
-            sum += crow0[0] + crow0[1] + crow0[2] + crow0[3];
-            sum += crow1[0] + crow1[1] + crow1[2] + crow1[3];
-            sum += crow2[0] + crow2[1] + crow2[2] + crow2[3];
-            sum += crow3[0] + crow3[1] + crow3[2] + crow3[3];
-            mrow[x] = sum * inv_samples;
+    // Only the path bounds plus the blur padding are represented. Together
+    // with gaussian_blur's reusable temporary this caps a full 512x512 shadow
+    // at two float images plus the 16-bit fill mask (about 2.5 MiB).
+    std::vector<float>& blurred = get_raster_scratch().values;
+    blurred.assign((size_t)blur_width * (size_t)blur_height, 0.0f);
+    for (int local_y = 0; local_y < sample_mask->height; ++local_y) {
+        const int y = sample_mask->y + local_y;
+        for (int local_x = 0; local_x < sample_mask->width; ++local_x) {
+            const int x = sample_mask->x + local_x;
+            blurred[(size_t)(y - blur_y0) * blur_width + (x - blur_x0)] = sample_count(
+                sample_mask->samples[(size_t)local_y * sample_mask->width + local_x]
+            ) * (1.0f / 16.0f);
         }
     }
 
-    // --- 3) Blur M -> B
-    std::vector<float> blurred = mask;
-    gaussian_blur(blurred, width, height, blur_radius, /*clamp_edges=*/ !inner);
+    gaussian_blur(blurred, blur_width, blur_height, blur_radius, /*clamp_edges=*/ !inner);
 
-    // --- 4) Composite (Defold y=0 bottom: NO Y FLIP)
+    const auto blurred_at = [&](int x, int y) -> float {
+        if (x < blur_x0 || y < blur_y0 || x >= blur_x1 || y >= blur_y1) return 0.0f;
+        return blurred[(size_t)(y - blur_y0) * blur_width + (x - blur_x0)];
+    };
+
     uint8_t* dst = buffer_info.bytes;
 
     // Premultiplied color LUT
@@ -229,26 +232,21 @@ void fill_shadow(
     }
 
     if (!inner) {
-        // ---------- OUTER shadow ----------
-        // ROI (avoid per-pixel bounds checks)
-        const int x0 = std::max(0, -offset_x);
-        const int y0 = std::max(0, -offset_y);
-        const int x1 = std::min(width,  width  - offset_x);
-        const int y1 = std::min(height, height - offset_y);
-        if (x0 >= x1 || y0 >= y1) return;
-
         if (channels == 4) {
-            for (int y = y0; y < y1; ++y) {
-                const int sy       = y + offset_y;                 // no flip
-                const int dst_row  = (sy * width) * channels;      // y grows upward
-                const int mask_row = y * width;
-                for (int x = x0; x < x1; ++x) {
-                    float alpha_f = blurred[mask_row + x];
+            for (int y = blur_y0; y < blur_y1; ++y) {
+                const int sy = y + offset_y;
+                if ((unsigned)sy >= (unsigned)height) continue;
+                const int dst_row  = (sy * width) * channels;
+                const int blur_row = (y - blur_y0) * blur_width;
+                for (int x = blur_x0; x < blur_x1; ++x) {
+                    const int dx = x + offset_x;
+                    if ((unsigned)dx >= (unsigned)width) continue;
+                    float alpha_f = blurred[(size_t)blur_row + (x - blur_x0)];
                     if (alpha_f < 0.f) alpha_f = 0.f;
                     if (alpha_f > 1.f) alpha_f = 1.f;
                     const uint8_t sa = (uint8_t)((a * alpha_f) + 0.5f);
 
-                    const int idx = dst_row + (x + offset_x) * channels;
+                    const int idx = dst_row + dx * channels;
                     const uint8_t sr = lut_r[sa], sg = lut_g[sa], sb = lut_b[sa];
 
                     dst[idx + 0] = lerp8(dst[idx + 0], sr, sa);
@@ -260,12 +258,15 @@ void fill_shadow(
                 }
             }
         } else if (channels == 3) {
-            for (int y = y0; y < y1; ++y) {
-                const int sy       = y + offset_y;                 // no flip
+            for (int y = blur_y0; y < blur_y1; ++y) {
+                const int sy = y + offset_y;
+                if ((unsigned)sy >= (unsigned)height) continue;
                 const int dst_row  = (sy * width) * channels;
-                const int mask_row = y * width;
-                for (int x = x0; x < x1; ++x) {
-                    float alpha_f = blurred[mask_row + x];
+                const int blur_row = (y - blur_y0) * blur_width;
+                for (int x = blur_x0; x < blur_x1; ++x) {
+                    const int dx = x + offset_x;
+                    if ((unsigned)dx >= (unsigned)width) continue;
+                    float alpha_f = blurred[(size_t)blur_row + (x - blur_x0)];
                     if (alpha_f < 0.f) alpha_f = 0.f;
                     if (alpha_f > 1.f) alpha_f = 1.f;
                     const uint8_t sa = (uint8_t)((a * alpha_f) + 0.5f);
@@ -274,21 +275,22 @@ void fill_shadow(
                     uint8_t sg = (premul && sa < 255) ? (uint8_t)((g * sa + 127) / 255) : (uint8_t)g;
                     uint8_t sb = (premul && sa < 255) ? (uint8_t)((b * sa + 127) / 255) : (uint8_t)b;
 
-                    const int idx = dst_row + (x + offset_x) * channels;
+                    const int idx = dst_row + dx * channels;
                     dst[idx + 0] = sr; dst[idx + 1] = sg; dst[idx + 2] = sb;
                 }
             }
         }
     } else {
-        // ---------- INNER shadow ----------
-        // alpha(x,y) = M(x,y) * (1 - B(x - off_x, y - off_y))
         if (channels == 4) {
-            for (int y = 0; y < height; ++y) {
-                const int dst_row  = (y * width) * channels; // no flip
-                const int mask_row = y * width;
+            for (int y = sample_mask->y; y < sample_mask->y + sample_mask->height; ++y) {
+                const int dst_row  = (y * width) * channels;
+                const int local_y = y - sample_mask->y;
 
-                for (int x = 0; x < width; ++x) {
-                    const float m = mask[mask_row + x];
+                for (int x = sample_mask->x; x < sample_mask->x + sample_mask->width; ++x) {
+                    const int local_x = x - sample_mask->x;
+                    const float m = sample_count(
+                        sample_mask->samples[(size_t)local_y * sample_mask->width + local_x]
+                    ) * (1.0f / 16.0f);
                     if (m <= 0.f) continue;
 
                     int sx = x - offset_x;
@@ -296,7 +298,7 @@ void fill_shadow(
                     if (sx < 0) sx = 0; else if (sx >= width)  sx = width  - 1;
                     if (sy < 0) sy = 0; else if (sy >= height) sy = height - 1;
 
-                    float bval = blurred[sy * width + sx];
+                    float bval = blurred_at(sx, sy);
                     float alpha_f = m * (1.0f - bval);
                     if (alpha_f <= 0.f) continue;
                     if (alpha_f > 1.f) alpha_f = 1.f;
@@ -315,12 +317,15 @@ void fill_shadow(
                 }
             }
         } else if (channels == 3) {
-            for (int y = 0; y < height; ++y) {
-                const int dst_row  = (y * width) * channels; // no flip
-                const int mask_row = y * width;
+            for (int y = sample_mask->y; y < sample_mask->y + sample_mask->height; ++y) {
+                const int dst_row  = (y * width) * channels;
+                const int local_y = y - sample_mask->y;
 
-                for (int x = 0; x < width; ++x) {
-                    const float m = mask[mask_row + x];
+                for (int x = sample_mask->x; x < sample_mask->x + sample_mask->width; ++x) {
+                    const int local_x = x - sample_mask->x;
+                    const float m = sample_count(
+                        sample_mask->samples[(size_t)local_y * sample_mask->width + local_x]
+                    ) * (1.0f / 16.0f);
                     if (m <= 0.f) continue;
 
                     int sx = x - offset_x;
@@ -328,7 +333,7 @@ void fill_shadow(
                     if (sx < 0) sx = 0; else if (sx >= width)  sx = width  - 1;
                     if (sy < 0) sy = 0; else if (sy >= height) sy = height - 1;
 
-                    float bval = blurred[sy * width + sx];
+                    float bval = blurred_at(sx, sy);
                     float alpha_f = m * (1.0f - bval);
                     if (alpha_f <= 0.f) continue;
                     if (alpha_f > 1.f) alpha_f = 1.f;

@@ -163,6 +163,27 @@ function M.delete_path(handle)
     bezierpath.delete_path(handle)
 end
 
+function M.get_path_bounds(handle, padding)
+    return bezierpath.get_path_bounds(handle, padding or 0)
+end
+
+local function pack(...)
+    return { n = select("#", ...), ... }
+end
+
+function M.with_path(buffer_info, fn)
+    local handle = M.create_path(buffer_info)
+    local results
+    local ok, err = xpcall(function()
+        results = pack(fn(handle))
+    end, debug.traceback)
+    M.delete_path(handle)
+    if not ok then
+        error(err, 0)
+    end
+    return unpack(results, 1, results.n)
+end
+
 function M.clear_all_paths()
     bezierpath.clear_all_paths()
 end
@@ -260,6 +281,46 @@ function M.draw_texture(width, height, draw_fn, factor, params)
     return buffer.get_bytes(buffer_info.buffer, hash("rgba"))
 end
 
+local function normalize_bounds(bounds)
+    assert(type(bounds) == "table", "bounds must be a table")
+    local x = math.floor(tonumber(bounds.x) or 0)
+    local y = math.floor(tonumber(bounds.y) or 0)
+    local right = math.ceil((tonumber(bounds.x) or 0) + (tonumber(bounds.width) or 0))
+    local top = math.ceil((tonumber(bounds.y) or 0) + (tonumber(bounds.height) or 0))
+    return {
+        x = x,
+        y = y,
+        width = math.max(1, right - x),
+        height = math.max(1, top - y),
+    }
+end
+
+function M.draw_texture_region(bounds, draw_fn, params)
+    local region = normalize_bounds(bounds)
+    local channels = 4
+    local buffer_info = {
+        buffer = buffer.create(
+            region.width * region.height,
+            {{
+                name = hash("rgba"),
+                type = buffer.VALUE_TYPE_UINT8,
+                count = channels
+            }}
+        ),
+        width = region.width,
+        height = region.height,
+        channels = channels,
+        premultiply_alpha = true,
+        path_handle = 0,
+        origin_x = region.x,
+        origin_y = region.y,
+    }
+
+    M.init_buffer(buffer_info, color_helper.black(0))
+    draw_fn(buffer_info, params)
+    return buffer.get_bytes(buffer_info.buffer, hash("rgba")), region
+end
+
 function M.add_gui_box(root, width, height, pos, visible, texture_name, draw_fn, params)
     local texture = M.draw_texture(width, height, draw_fn, params)
     local box = gui_helper.create_box_node(root, width, height, pos, nil, visible)
@@ -305,6 +366,21 @@ function M.create_texture(name, width, height, draw_fn, params, factor)
 	end
 
 	return name
+end
+
+
+function M.create_texture_region(name, bounds, draw_fn, params)
+    local region = normalize_bounds(bounds)
+    local should_create_texture = gui.new_texture(name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
+    if should_create_texture then
+        gui.delete_texture(name)
+        local texture
+        texture, region = M.draw_texture_region(region, draw_fn, params)
+        if not M.new_texture(region.width, region.height, name, texture) then
+            error("Unable to create texture")
+        end
+    end
+    return name, region
 end
 
 return M

@@ -54,12 +54,13 @@ static int fill_color_lua(lua_State *L) {
 
 static int reset_path_lua(lua_State* L) {
     int top = lua_gettop(L);
-    int32_t path_handle = luaL_checknumber(L, 1);
+    uint32_t path_handle = (uint32_t)luaL_checknumber(L, 1);
 
     PathPointList* path_points = get_path_points(path_handle);
     if (path_points) {
         path_points->points.clear();
         path_points->is_closed = false;
+        invalidate_path(path_points);
     }
 
     assert(top == lua_gettop(L));
@@ -69,7 +70,7 @@ static int reset_path_lua(lua_State* L) {
 static int add_point_lua(lua_State* L) {
     int top = lua_gettop(L);
 
-    int32_t path_handle = luaL_checknumber(L, 1);
+    uint32_t path_handle = (uint32_t)luaL_checknumber(L, 1);
     float x = luaL_checknumber(L, 2);
     float y = luaL_checknumber(L, 3);
 
@@ -83,6 +84,7 @@ static int add_point_lua(lua_State* L) {
     PathPointList* path_points = get_path_points(path_handle);
     if (path_points) {
         path_points->points.push_back(p);
+        invalidate_path(path_points);
     }
 
     assert(top == lua_gettop(L));
@@ -92,7 +94,7 @@ static int add_point_lua(lua_State* L) {
 static int add_quad_curve_point_lua(lua_State* L) {
     int top = lua_gettop(L);
 
-    int32_t path_handle = luaL_checknumber(L, 1);
+    uint32_t path_handle = (uint32_t)luaL_checknumber(L, 1);
     float x = luaL_checknumber(L, 2);
     float y = luaL_checknumber(L, 3);
     float cx = luaL_checknumber(L, 4);
@@ -108,6 +110,7 @@ static int add_quad_curve_point_lua(lua_State* L) {
     PathPointList* path_points = get_path_points(path_handle);
     if (path_points) {
         path_points->points.push_back(p);
+        invalidate_path(path_points);
     }
 
     assert(top == lua_gettop(L));
@@ -117,7 +120,7 @@ static int add_quad_curve_point_lua(lua_State* L) {
 static int add_arc_point_lua(lua_State* L) {
     int top = lua_gettop(L);
 
-    int32_t path_handle = (int32_t) luaL_checknumber(L, 1);
+    uint32_t path_handle = (uint32_t)luaL_checknumber(L, 1);
     float cx            = (float) luaL_checknumber(L, 2);
     float cy            = (float) luaL_checknumber(L, 3);
     float radius        = (float) luaL_checknumber(L, 4);
@@ -142,6 +145,7 @@ static int add_arc_point_lua(lua_State* L) {
 
     if (PathPointList* path_points = get_path_points(path_handle)) {
         path_points->points.push_back(p);
+        invalidate_path(path_points);
     }
     assert(top == lua_gettop(L));
     return 0;
@@ -149,11 +153,15 @@ static int add_arc_point_lua(lua_State* L) {
 
 static int set_path_closed_lua(lua_State* L) {
     int top = lua_gettop(L);
-    int32_t path_handle = luaL_checknumber(L, 1);
+    uint32_t path_handle = (uint32_t)luaL_checknumber(L, 1);
 
     PathPointList* path_points = get_path_points(path_handle);
     if (path_points) {
-        path_points->is_closed = lua_toboolean(L, 2);
+        const bool closed = lua_toboolean(L, 2);
+        if (path_points->is_closed != closed) {
+            path_points->is_closed = closed;
+            invalidate_path(path_points);
+        }
     }
 
     assert(top == lua_gettop(L));
@@ -336,17 +344,40 @@ static int stroke_path_glow_lua(lua_State* L) {
 
 static int create_path_lua(lua_State* L) {
     DM_LUA_STACK_CHECK(L, 1);
-    const int handle = create_path();
+    const uint32_t handle = create_path();
     lua_pushinteger(L, handle);
     return 1;
 }
 
 static int delete_path_lua(lua_State* L) {
     int top = lua_gettop(L);
-    int handle = luaL_checknumber(L, 1);
+    uint32_t handle = (uint32_t)luaL_checknumber(L, 1);
     delete_path(handle);
     assert(top == lua_gettop(L));
     return 0;
+}
+
+static int get_path_bounds_lua(lua_State* L) {
+    DM_LUA_STACK_CHECK(L, 1);
+    const uint32_t handle = (uint32_t)luaL_checknumber(L, 1);
+    const float padding = (float)luaL_optnumber(L, 2, 0.0);
+    PathPointList* path = get_path_points(handle);
+    float min_x, min_y, max_x, max_y;
+    if (!get_path_bounds(path, padding, min_x, min_y, max_x, max_y)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_newtable(L);
+    lua_pushnumber(L, min_x);
+    lua_setfield(L, -2, "x");
+    lua_pushnumber(L, min_y);
+    lua_setfield(L, -2, "y");
+    lua_pushnumber(L, max_x - min_x);
+    lua_setfield(L, -2, "width");
+    lua_pushnumber(L, max_y - min_y);
+    lua_setfield(L, -2, "height");
+    return 1;
 }
 
 static int clear_all_paths_lua(lua_State* L) {
@@ -361,6 +392,7 @@ static const luaL_reg Module_methods[] = {
     {"fill_color", fill_color_lua},
     {"create_path", create_path_lua},
     {"delete_path", delete_path_lua},
+    {"get_path_bounds", get_path_bounds_lua},
     {"clear_all_paths", clear_all_paths_lua},
     {"reset_path", reset_path_lua},
     {"add_point", add_point_lua},
@@ -400,6 +432,7 @@ dmExtension::Result AppFinalizeExtension(dmExtension::AppParams *params) {
 }
 
 dmExtension::Result FinalizeExtension(dmExtension::Params *params) {
+    clear_all_paths();
     return dmExtension::RESULT_OK;
 }
 

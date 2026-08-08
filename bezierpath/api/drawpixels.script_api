@@ -18,3 +18,16 @@
       type: number
     - name: alpha
       type: number
+
+  - name: get_path_bounds
+    type: function
+    desc: Return flattened path bounds expanded by optional padding
+    parameters:
+    - name: handle
+      type: number
+    - name: padding
+      type: number
+      optional: true
+    returns:
+    - type: table
+      desc: Bounds with x, y, width, and height fields, or nil for an empty path

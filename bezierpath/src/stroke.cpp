@@ -1,182 +1,183 @@
 #include <dmsdk/sdk.h>
-#include <math.h>
-#include <stdlib.h>
-#include <vector>
 #include <algorithm>
-#include <string>
-#include <stack>
+#include <cmath>
+#include <vector>
 #include "utils.h"
 #include "buffer.h"
 #include "stroke.h"
 
-void draw_circle_cap(
+static void draw_circle_cap(
     const BufferInfo& buffer_info,
     float cx, float cy, float dx, float dy, float radius,
-    std::vector<float>& coverage, int supersample, int segments = 16
+    SampleMask& mask, int segments = 16
 ) {
-    // Compute perpendicular vector
-    float nx = -dy;
-    float ny = dx;
-
-    std::vector<std::pair<float, float>> arc_points;
-    arc_points.emplace_back(cx, cy); // Center
-
-    for (int i = 0; i <= segments; ++i)
-    {
-        float angle = -M_TAU + (M_PI * i / segments); // From -90° to +90°
-        float rx = cosf(angle);
-        float ry = sinf(angle);
-
-        // Rotate relative to dx/dy and nx/ny
-        float x = rx * dx + ry * nx;
-        float y = rx * dy + ry * ny;
-
-        arc_points.emplace_back(cx + x * radius, cy + y * radius);
+    const float nx = -dy;
+    const float ny = dx;
+    std::vector<std::pair<float, float> > arc_points;
+    arc_points.reserve((size_t)segments + 2);
+    arc_points.push_back(std::make_pair(cx, cy));
+    for (int i = 0; i <= segments; ++i) {
+        const float angle = -M_TAU + (M_PI * i / segments);
+        const float rx = cosf(angle);
+        const float ry = sinf(angle);
+        const float x = rx * dx + ry * nx;
+        const float y = rx * dy + ry * ny;
+        arc_points.push_back(std::make_pair(cx + x * radius, cy + y * radius));
     }
-
-    rasterize_polygon_to_coverage(buffer_info, arc_points, coverage, supersample);
+    rasterize_polygon_to_sample_mask(buffer_info, arc_points, mask);
 }
 
-// Stroke rendering with support for cap and join styles
-void draw_stroke_cap(
+static void draw_stroke_cap(
     const BufferInfo& buffer_info,
-    float cx, float cy, float dx, float dy, float width, int cap_style,
-    std::vector<float>& coverage, int supersample
+    float cx, float cy, float dx, float dy,
+    float width, int cap_style, SampleMask& mask
 ) {
-    float nx = -dy;
-    float ny = dx;
-    const float half_w = width / 2.0f;
-
-    if (cap_style == 1) // round
-    {
-        draw_circle_cap(buffer_info, cx, cy, dx, dy, half_w, coverage, supersample);
-    }
-    else if (cap_style == 2) // square
-    {
-        float px = cx + dx * half_w;
-        float py = cy + dy * half_w;
-
-        std::vector<std::pair<float, float>> cap = {
-            {px + nx * half_w, py + ny * half_w},
-            {px - nx * half_w, py - ny * half_w},
-            {cx - nx * half_w, cy - ny * half_w},
-            {cx + nx * half_w, cy + ny * half_w}
-        };
-
-        rasterize_polygon_to_coverage(buffer_info, cap,  coverage, supersample);
+    const float nx = -dy;
+    const float ny = dx;
+    const float half_w = width * 0.5f;
+    if (cap_style == CAP_ROUND) {
+        draw_circle_cap(buffer_info, cx, cy, dx, dy, half_w, mask);
+    } else if (cap_style == CAP_SQUARE) {
+        const float px = cx + dx * half_w;
+        const float py = cy + dy * half_w;
+        std::vector<std::pair<float, float> > cap;
+        cap.push_back(std::make_pair(px + nx * half_w, py + ny * half_w));
+        cap.push_back(std::make_pair(px - nx * half_w, py - ny * half_w));
+        cap.push_back(std::make_pair(cx - nx * half_w, cy - ny * half_w));
+        cap.push_back(std::make_pair(cx + nx * half_w, cy + ny * half_w));
+        rasterize_polygon_to_sample_mask(buffer_info, cap, mask);
     }
 }
 
-void draw_bevel_join(
+static void draw_bevel_join(
     const BufferInfo& buffer_info,
-    const std::pair<float,float>& p,
-    const std::pair<float,float>& a,
-    const std::pair<float,float>& b,
-    std::vector<float>& coverage, int supersample
+    const std::pair<float, float>& p,
+    const std::pair<float, float>& a,
+    const std::pair<float, float>& b,
+    SampleMask& mask
 ) {
-    std::vector<std::pair<float,float>> tri = { a, b, p };
-    rasterize_polygon_to_coverage(buffer_info, tri, coverage, supersample);
+    std::vector<std::pair<float, float> > triangle;
+    triangle.push_back(a);
+    triangle.push_back(b);
+    triangle.push_back(p);
+    rasterize_polygon_to_sample_mask(buffer_info, triangle, mask);
 }
 
-void draw_round_join(
+static void draw_round_join(
     const BufferInfo& buffer_info,
-    const std::pair<float,float>& c,
-    float r, float a0, float a1,
-    std::vector<float>& coverage,
-    int supersample,
+    const std::pair<float, float>& center,
+    float radius, float a0, float a1,
+    SampleMask& mask,
     int segments = 16
 ) {
-    std::vector<std::pair<float,float>> arc_points;
-    arc_points.emplace_back(c.first, c.second);
-
-    // Ensure consistent direction (CCW if a1 > a0, CW if a1 < a0)
+    std::vector<std::pair<float, float> > points;
+    points.reserve((size_t)segments + 2);
+    points.push_back(center);
     float sweep = a1 - a0;
-    if (sweep >  M_PI) sweep -= 2.0f * M_PI;
-    if (sweep < -M_PI) sweep += 2.0f * M_PI;
-
-    int steps = std::max(segments, 4);
-
-    for (int i = 0; i <= steps; ++i)
-    {
-        float t = (float)i / steps;
-        float a = a0 + sweep * t;
-        arc_points.emplace_back(c.first + cosf(a) * r, c.second + sinf(a) * r);
+    if (sweep > M_PI) sweep -= M_TAU;
+    if (sweep < -M_PI) sweep += M_TAU;
+    const int steps = std::max(segments, 4);
+    for (int i = 0; i <= steps; ++i) {
+        const float t = (float)i / steps;
+        const float angle = a0 + sweep * t;
+        points.push_back(std::make_pair(
+            center.first + cosf(angle) * radius,
+            center.second + sinf(angle) * radius
+        ));
     }
-
-    rasterize_polygon_to_coverage(buffer_info, arc_points, coverage, supersample);
+    rasterize_polygon_to_sample_mask(buffer_info, points, mask);
 }
 
-// Draw a join at vertex p1 between segments (p0->p1) and (p1->p2).
-// Uses the same left-normal convention nx=-dy, ny=dx as elsewhere.
-// For a left-turn we join on the "left/outside" using offset_out.
-// For a right-turn we join on the "right/outside" using offset_in.
-inline void draw_join_at_vertex(
+static void draw_join_at_vertex(
     const BufferInfo& buffer_info,
-    const std::pair<float,float>& p0,
-    const std::pair<float,float>& p1,
-    const std::pair<float,float>& p2,
+    const std::pair<float, float>& p0,
+    const std::pair<float, float>& p1,
+    const std::pair<float, float>& p2,
     float offset_in, float offset_out,
     int join_style,
-    std::vector<float>& coverage,
-    int supersample
+    SampleMask& mask
 ) {
+    float d0x = p1.first - p0.first;
+    float d0y = p1.second - p0.second;
+    float d1x = p2.first - p1.first;
+    float d1y = p2.second - p1.second;
+    const float len0 = std::hypot(d0x, d0y);
+    const float len1 = std::hypot(d1x, d1y);
+    if (len0 == 0.0f || len1 == 0.0f) return;
+    d0x /= len0;
+    d0y /= len0;
+    d1x /= len1;
+    d1y /= len1;
 
-    // Directions of incoming and outgoing segments
-    float v0x = p1.first  - p0.first;
-    float v0y = p1.second - p0.second;
-    float v1x = p2.first  - p1.first;
-    float v1y = p2.second - p1.second;
+    const float n0x = -d0y;
+    const float n0y = d0x;
+    const float n1x = -d1y;
+    const float n1y = d1x;
+    const float cross = d0x * d1y - d0y * d1x;
+    if (fabsf(cross) < 1e-6f) return;
 
-    float len0 = std::hypot(v0x, v0y);
-    float len1 = std::hypot(v1x, v1y);
-    if (len0 <= 0.0f || len1 <= 0.0f) return;
-
-    v0x /= len0; v0y /= len0;
-    v1x /= len1; v1y /= len1;
-
-    // Left normals for each segment (consistent with the rest of the codebase)
-    float n0x = -v0y, n0y =  v0x;
-    float n1x = -v1y, n1y =  v1x;
-
-    // Cross product to determine turning direction at the corner
-    // (sign convention matches our vector math space used everywhere else)
-    float cross = v0x * v1y - v0y * v1x;
-
-    // Choose which side is the *exterior* of the bend and corresponding radius
-    bool left_turn = (cross < 0.0f);
-
-    // Outer points at the corner on each offset edge
-    std::pair<float,float> A, B;   // endpoints of the wedge on the exterior side
-    float radius = 0.0f;
-    float a0 = 0.0f, a1 = 0.0f;    // angles for round join
-
+    std::pair<float, float> a;
+    std::pair<float, float> b;
+    float radius;
+    float a0;
+    float a1;
+    const bool left_turn = cross < 0.0f;
     if (left_turn) {
-        if (offset_out <= 0.0f) return; // nothing to draw on this side
         radius = offset_out;
-        A = { p1.first + n0x * offset_out, p1.second + n0y * offset_out };
-        B = { p1.first + n1x * offset_out, p1.second + n1y * offset_out };
-        // Arc goes along the circle of normals on the left side
+        if (radius <= 0.0f) return;
+        a = std::make_pair(p1.first + n0x * radius, p1.second + n0y * radius);
+        b = std::make_pair(p1.first + n1x * radius, p1.second + n1y * radius);
         a0 = std::atan2(n0y, n0x);
         a1 = std::atan2(n1y, n1x);
     } else {
-        if (offset_in <= 0.0f) return; // nothing to draw on this side
         radius = offset_in;
-        // Right side is the negative of the left normal
-        A = { p1.first - n0x * offset_in, p1.second - n0y * offset_in };
-        B = { p1.first - n1x * offset_in, p1.second - n1y * offset_in };
-        // Use the right-side normals (i.e., -n) for the arc angles
+        if (radius <= 0.0f) return;
+        a = std::make_pair(p1.first - n0x * radius, p1.second - n0y * radius);
+        b = std::make_pair(p1.first - n1x * radius, p1.second - n1y * radius);
         a0 = std::atan2(-n0y, -n0x);
         a1 = std::atan2(-n1y, -n1x);
     }
 
     if (join_style == JOIN_BEVEL) {
-        // Simple triangle between the two exterior offset endpoints and the vertex.
-        // (The strip fill from the segments covers the rest.)
-        draw_bevel_join(buffer_info, p1, A, B, coverage, supersample);
+        draw_bevel_join(buffer_info, p1, a, b, mask);
     } else if (join_style == JOIN_ROUND) {
-        // Exterior arc centered at the vertex, radius = chosen exterior offset.
-        // draw_round_join will normalize sweep to the shortest path while keeping direction.
-        draw_round_join(buffer_info, p1, radius, a0, a1, coverage, supersample);
+        draw_round_join(buffer_info, p1, radius, a0, a1, mask);
+    }
+}
+
+static inline void blend_stroke_pixel(
+    const BufferInfo& buffer_info,
+    int x, int y,
+    int r, int g, int b, int a,
+    float coverage,
+    bool round_values
+) {
+    if (coverage <= 0.0f) return;
+    const float alpha_value = std::min(255.0f, a * std::min(coverage, 1.0f));
+    uint8_t sa = round_values ? (uint8_t)std::round(alpha_value) : (uint8_t)alpha_value;
+    uint8_t sr = (uint8_t)r;
+    uint8_t sg = (uint8_t)g;
+    uint8_t sb = (uint8_t)b;
+    if (buffer_info.premultiply_alpha && sa < 255) {
+        const float scale = sa / 255.0f;
+        sr = round_values ? (uint8_t)std::round(sr * scale) : (uint8_t)(sr * scale);
+        sg = round_values ? (uint8_t)std::round(sg * scale) : (uint8_t)(sg * scale);
+        sb = round_values ? (uint8_t)std::round(sb * scale) : (uint8_t)(sb * scale);
+    }
+
+    uint8_t* dst = buffer_info.bytes;
+    const int idx = (y * buffer_info.width + x) * buffer_info.channels;
+    if (buffer_info.channels == 4) {
+        const float src_a = sa / 255.0f;
+        const float inv_a = 1.0f - src_a;
+        dst[idx + 0] = (uint8_t)(sr * src_a + dst[idx + 0] * inv_a);
+        dst[idx + 1] = (uint8_t)(sg * src_a + dst[idx + 1] * inv_a);
+        dst[idx + 2] = (uint8_t)(sb * src_a + dst[idx + 2] * inv_a);
+        dst[idx + 3] = (uint8_t)(sa + dst[idx + 3] * inv_a);
+    } else if (buffer_info.channels == 3) {
+        dst[idx + 0] = sr;
+        dst[idx + 1] = sg;
+        dst[idx + 2] = sb;
     }
 }
 
@@ -186,388 +187,209 @@ void stroke_path(
     int r, int g, int b, int a,
     int cap_style, int join_style
 ) {
-    const int img_w = buffer_info.width;
-    const int img_h = buffer_info.height;
-    const int channels = buffer_info.channels;
-    const bool premul = buffer_info.premultiply_alpha;
+    PathPointList* path = get_path_points(buffer_info.path_handle);
+    if (!path || path->points.empty() || width <= 0.0f) return;
 
-    PathPointList* path_points = get_path_points(buffer_info.path_handle);
+    const std::vector<std::pair<float, float> >* flat_path_ptr = nullptr;
+    if (!get_flattened_path(path, flat_path_ptr)) return;
+    const std::vector<std::pair<float, float> >& flat_path = *flat_path_ptr;
+    const std::vector<uint8_t>& corner_flags = path->flattened_corner_flags;
+    if (flat_path.size() < 2) return;
 
-    if (!path_points || path_points->points.empty())
-        return;
+    float min_x = flat_path[0].first;
+    float min_y = flat_path[0].second;
+    float max_x = min_x;
+    float max_y = min_y;
+    for (size_t i = 1; i < flat_path.size(); ++i) {
+        min_x = std::min(min_x, flat_path[i].first);
+        min_y = std::min(min_y, flat_path[i].second);
+        max_x = std::max(max_x, flat_path[i].first);
+        max_y = std::max(max_y, flat_path[i].second);
+    }
 
-    std::vector<std::pair<float, float>> flat_path;
-    std::vector<uint8_t> corner_flags; // 1 = original corner (line-line or bezier endpoint), 0 = interior bezier sample
+    SampleMask& mask = get_raster_scratch().mask;
+    initialize_sample_mask(buffer_info, min_x, min_y, max_x, max_y, width + 1.0f, mask);
+    if (mask.empty()) return;
 
-    const float flatness_px = 0.25f;
-    const int   max_depth   = 10;
-
-    flatten_path(path_points->points, flat_path, flatness_px, max_depth, &corner_flags);
-
-    const float half_w = width / 2.0f;
-    const int supersample = 4;
-    const int s_width = img_w * supersample;
-    const int s_height = img_h * supersample;
-
-    float offset_in  = 0.0f;
+    const float half_w = width * 0.5f;
+    float offset_in = 0.0f;
     float offset_out = 0.0f;
-    switch (position_mode) {
-        case 0: // centered
-            offset_in  = half_w;
-            offset_out = half_w;
-            break;
-        case 1: // outside
-            offset_in  = 0.0f;
-            offset_out = width;
-            break;
-        case 2: // inside
-            offset_in  = width;
-            offset_out = 0.0f;
-            break;
+    if (position_mode == 0) {
+        offset_in = half_w;
+        offset_out = half_w;
+    } else if (position_mode == 1) {
+        offset_in = 0.0f;
+        offset_out = width;
+    } else if (position_mode == 2) {
+        offset_in = width;
+        offset_out = 0.0f;
     }
 
-    std::vector<float> coverage(s_width * s_height, 0.0f);
-
-    for (size_t i = 0; i + 1 < flat_path.size(); ++i)
-    {
-        const auto& p0 = flat_path[i];
-        const auto& p1 = flat_path[i + 1];
-
+    for (size_t i = 0; i + 1 < flat_path.size(); ++i) {
+        const std::pair<float, float>& p0 = flat_path[i];
+        const std::pair<float, float>& p1 = flat_path[i + 1];
         float dx = p1.first - p0.first;
         float dy = p1.second - p0.second;
-        float len = std::hypot(dx, dy);
-        if (len == 0.0f) continue;
+        const float length = std::hypot(dx, dy);
+        if (length == 0.0f) continue;
+        dx /= length;
+        dy /= length;
+        const float nx = -dy;
+        const float ny = dx;
 
-        dx /= len; dy /= len;
+        std::vector<std::pair<float, float> > quad;
+        quad.reserve(4);
+        quad.push_back(std::make_pair(p0.first + nx * offset_out, p0.second + ny * offset_out));
+        quad.push_back(std::make_pair(p1.first + nx * offset_out, p1.second + ny * offset_out));
+        quad.push_back(std::make_pair(p1.first - nx * offset_in, p1.second - ny * offset_in));
+        quad.push_back(std::make_pair(p0.first - nx * offset_in, p0.second - ny * offset_in));
+        rasterize_polygon_to_sample_mask(buffer_info, quad, mask);
 
-        float nx = -dy, ny = dx;
-
-        float offset_in = 0.0f, offset_out = 0.0f;
-        if (position_mode == 0) { offset_in = half_w; offset_out = half_w; }
-        else if (position_mode == 1) { offset_in = 0.0f; offset_out = width; }
-        else if (position_mode == 2) { offset_in = width; offset_out = 0.0f; }
-
-        float ax = p0.first + nx * offset_out;
-        float ay = p0.second + ny * offset_out;
-        float bx = p1.first + nx * offset_out;
-        float by = p1.second + ny * offset_out;
-        float cx = p1.first - nx * offset_in;
-        float cy = p1.second - ny * offset_in;
-        float dx_ = p0.first - nx * offset_in;
-        float dy_ = p0.second - ny * offset_in;
-
-        std::vector<std::pair<float, float>> quad = { {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_} };
-
-        rasterize_polygon_to_coverage(buffer_info, quad, coverage, supersample);
-
-        // Caps
-        if (!path_points->is_closed)
-        {
-            if (i == 0) draw_stroke_cap(
-                buffer_info,
-                p0.first,
-                p0.second,
-                -dx, -dy,
-                width, cap_style,
-                coverage,
-                supersample
-            );
-            if (i + 2 == flat_path.size()) draw_stroke_cap(
-                buffer_info,
-                p1.first, p1.second,
-                dx, dy,
-                width, cap_style,
-                coverage,
-                supersample
-            );
+        if (!path->is_closed) {
+            if (i == 0) draw_stroke_cap(buffer_info, p0.first, p0.second, -dx, -dy, width, cap_style, mask);
+            if (i + 2 == flat_path.size()) {
+                draw_stroke_cap(buffer_info, p1.first, p1.second, dx, dy, width, cap_style, mask);
+            }
         }
 
-        // ---------------------------
-        // Joins (ROUND / BEVEL)
-        // ---------------------------
-        if (join_style != JOIN_MITER)
-        {
-            // Create a join at p1 between [p0,p1] and [p1,p2]
-            if (i + 2 < flat_path.size())
-            {
-
-                // Only at real corners (skip interior Bezier samples if has flags)
-                if (!corner_flags.empty() && !corner_flags[i + 1])
-                {
-                    // no join at this interior bezier sample
-                }
-                else
-                {
-                    const auto& p2 = flat_path[i + 2];
-                    draw_join_at_vertex(
-                        buffer_info,
-                        p0, p1, p2,
-                        offset_in, offset_out,
-                        join_style,
-                        coverage,
-                        supersample
-                    );
-                }
-            }
+        if (join_style != JOIN_MITER && i + 2 < flat_path.size() &&
+            (corner_flags.empty() || corner_flags[i + 1])) {
+            draw_join_at_vertex(
+                buffer_info, p0, p1, flat_path[i + 2],
+                offset_in, offset_out, join_style, mask
+            );
         }
     }
 
-    // If the path is closed, also join the last->first->second corner
-    // If path is closed, add the last segment from last -> first
-    if (path_points->is_closed && flat_path.size() >= 2)
-    {
-        const auto& p0 = flat_path[flat_path.size() - 1]; // last point
-        const auto& p1 = flat_path[0];                    // first point
-
+    if (path->is_closed && flat_path.size() >= 2) {
+        const std::pair<float, float>& p0 = flat_path.back();
+        const std::pair<float, float>& p1 = flat_path.front();
         float dx = p1.first - p0.first;
         float dy = p1.second - p0.second;
-        float len = std::hypot(dx, dy);
-        if (len > 0.0f)
-        {
-            dx /= len;
-            dy /= len;
-            float nx = -dy, ny = dx;
-
-            float ax = p0.first + nx * offset_out;
-            float ay = p0.second + ny * offset_out;
-            float bx = p1.first + nx * offset_out;
-            float by = p1.second + ny * offset_out;
-            float cx = p1.first - nx * offset_in;
-            float cy = p1.second - ny * offset_in;
-            float dx_ = p0.first - nx * offset_in;
-            float dy_ = p0.second - ny * offset_in;
-
-            std::vector<std::pair<float, float>> quad = {
-                {ax, ay}, {bx, by}, {cx, cy}, {dx_, dy_}
-            };
-
-            rasterize_polygon_to_coverage(buffer_info, quad, coverage, supersample);
+        const float length = std::hypot(dx, dy);
+        if (length > 0.0f) {
+            dx /= length;
+            dy /= length;
+            const float nx = -dy;
+            const float ny = dx;
+            std::vector<std::pair<float, float> > quad;
+            quad.push_back(std::make_pair(p0.first + nx * offset_out, p0.second + ny * offset_out));
+            quad.push_back(std::make_pair(p1.first + nx * offset_out, p1.second + ny * offset_out));
+            quad.push_back(std::make_pair(p1.first - nx * offset_in, p1.second - ny * offset_in));
+            quad.push_back(std::make_pair(p0.first - nx * offset_in, p0.second - ny * offset_in));
+            rasterize_polygon_to_sample_mask(buffer_info, quad, mask);
         }
 
-        // And also draw the joins between the last segment and the first segment
-        if (join_style != JOIN_MITER && flat_path.size() >= 3)
-        {
-            auto draw_join = [&](int i0, int k, int k2) {
-                if (corner_flags.empty() || corner_flags[k])
-                {
-                    draw_join_at_vertex(
-                        buffer_info,
-                        flat_path[i0], flat_path[k], flat_path[k2],
-                        offset_in, offset_out, join_style, coverage, supersample
-                    );
-                }
-            };
-
-            draw_join(flat_path.size() - 2, flat_path.size() - 1, 0);
-            draw_join(flat_path.size() - 1, 0, 1);
+        if (join_style != JOIN_MITER && flat_path.size() >= 3) {
+            const size_t last = flat_path.size() - 1;
+            if (corner_flags.empty() || corner_flags[last]) {
+                draw_join_at_vertex(
+                    buffer_info, flat_path[last - 1], flat_path[last], flat_path[0],
+                    offset_in, offset_out, join_style, mask
+                );
+            }
+            if (corner_flags.empty() || corner_flags[0]) {
+                draw_join_at_vertex(
+                    buffer_info, flat_path[last], flat_path[0], flat_path[1],
+                    offset_in, offset_out, join_style, mask
+                );
+            }
         }
     }
 
-    // Final buffer write
-    uint8_t* dst = buffer_info.bytes;
-    float inv_samples = 1.0f / (supersample * supersample);
-
-    for (int y = 0; y < img_h; ++y)
-    {
-        for (int x = 0; x < img_w; ++x)
-        {
-            float sum = 0.0f;
-
-            for (int sy = 0; sy < supersample; ++sy)
-            {
-                for (int sx = 0; sx < supersample; ++sx)
-                {
-                    int cx = x * supersample + sx;
-                    int cy = y * supersample + sy;
-                    sum += coverage[cx + cy * s_width];
-                }
-            }
-
-            float alpha = std::min(sum * inv_samples, 1.0f);
-            if (alpha <= 0.0f) continue;
-
-            uint8_t sa = static_cast<uint8_t>(a * alpha);
-            uint8_t sr = r, sg = g, sb = b;
-
-            if (premul && sa < 255)
-            {
-                float scale = sa / 255.0f;
-                sr = static_cast<uint8_t>(sr * scale);
-                sg = static_cast<uint8_t>(sg * scale);
-                sb = static_cast<uint8_t>(sb * scale);
-            }
-
-            int idx = (y * img_w + x) * channels;
-
-            if (channels == 4)
-            {
-                float src_a = sa / 255.0f;
-                float inv_a = 1.0f - src_a;
-
-                dst[idx + 0] = static_cast<uint8_t>(sr * src_a + dst[idx + 0] * inv_a);
-                dst[idx + 1] = static_cast<uint8_t>(sg * src_a + dst[idx + 1] * inv_a);
-                dst[idx + 2] = static_cast<uint8_t>(sb * src_a + dst[idx + 2] * inv_a);
-                dst[idx + 3] = static_cast<uint8_t>(sa + dst[idx + 3] * inv_a);
-            }
-            else if (channels == 3)
-            {
-                dst[idx + 0] = sr;
-                dst[idx + 1] = sg;
-                dst[idx + 2] = sb;
-            }
+    for (int local_y = 0; local_y < mask.height; ++local_y) {
+        const int y = mask.y + local_y;
+        for (int local_x = 0; local_x < mask.width; ++local_x) {
+            const uint8_t count = sample_count(mask.samples[(size_t)local_y * mask.width + local_x]);
+            if (count == 0) continue;
+            blend_stroke_pixel(
+                buffer_info, mask.x + local_x, y,
+                r, g, b, a, count * (1.0f / 16.0f), false
+            );
         }
     }
 }
 
-// Soft glow outside the stroke.
-// width        : stroke width in pixels
-// radius       : glow thickness outside the outer stroke edge
-// position_mode: StrokePosition { CENTER = 0, INSIDE, OUTSIDE }
-// color        : r,g,b,a (a is max opacity right at the outer stroke edge)
 void stroke_path_glow(
     const BufferInfo& buffer_info,
     float width, float radius, int position_mode,
     int r, int g, int b, int a
 ) {
     if (radius <= 0.0f || a <= 0) return;
+    PathPointList* path = get_path_points(buffer_info.path_handle);
+    if (!path || path->points.empty()) return;
 
-    PathPointList* path_points = get_path_points(buffer_info.path_handle);
-
-    if (!path_points || path_points->points.empty()) return;
-
-    const int img_w = buffer_info.width;
-    const int img_h = buffer_info.height;
-    const int channels = buffer_info.channels;
-    const bool premul = buffer_info.premultiply_alpha;
-
-    const int supersample = 4;
-    const int s_width  = img_w * supersample;
-    const int s_height = img_h * supersample;
-
-    // Flatten path like stroke_path
-    std::vector<std::pair<float, float>> flat_path;
-    std::vector<uint8_t> corner_flags;
-
-    const float flatness_px = 0.25f;
-    const int   max_depth   = 10;
-
-    flatten_path(path_points->points, flat_path, flatness_px, max_depth, &corner_flags);
+    const std::vector<std::pair<float, float> >* flat_path_ptr = nullptr;
+    if (!get_flattened_path(path, flat_path_ptr)) return;
+    const std::vector<std::pair<float, float> >& flat_path = *flat_path_ptr;
     if (flat_path.size() < 2) return;
 
-    // Distance helper (point -> segment)
-    auto dist_point_seg = [](float px, float py,
-                             float ax, float ay,
-                             float bx, float by) -> float
-    {
-        float vx = bx - ax, vy = by - ay;
-        float wx = px - ax, wy = py - ay;
-        float vv = vx*vx + vy*vy;
-        if (vv <= 0.0f) return std::hypot(px - ax, py - ay);
-        float t = (vx*wx + vy*wy) / vv;
-        if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
-        float qx = ax + t*vx, qy = ay + t*vy;
-        return std::hypot(px - qx, py - qy);
-    };
+    const SegmentIndex* segments = get_segment_index(path, path->is_closed);
+    if (!segments) return;
 
-    // Build segment list (respect path->is_closed)
-    struct Seg { float ax, ay, bx, by; };
-    std::vector<Seg> segs;
-    segs.reserve(flat_path.size() + 1);
-    for (size_t i = 0; i + 1 < flat_path.size(); ++i)
-        segs.push_back({ flat_path[i].first, flat_path[i].second,
-                         flat_path[i+1].first, flat_path[i+1].second });
-    if (path_points->is_closed && flat_path.size() >= 2)
-        segs.push_back({ flat_path.back().first,  flat_path.back().second,
-                         flat_path.front().first, flat_path.front().second });
-
-    // Where the glow begins (outer edge of stroke on the outside/left side)
     float base_offset = 0.0f;
-    switch (position_mode) {
-        case 0: /* CENTER  */ base_offset = 0.5f * std::max(0.0f, width); break;
-        case 1: /* INSIDE  */ base_offset = 0.0f;                         break;
-        case 2: /* OUTSIDE */ base_offset = std::max(0.0f, width);        break;
-        default:              base_offset = 0.5f * std::max(0.0f, width); break;
+    if (position_mode == 0) base_offset = 0.5f * std::max(0.0f, width);
+    else if (position_mode == 1) base_offset = 0.0f;
+    else if (position_mode == 2) base_offset = std::max(0.0f, width);
+    else base_offset = 0.5f * std::max(0.0f, width);
+
+    float min_x = flat_path[0].first;
+    float min_y = flat_path[0].second;
+    float max_x = min_x;
+    float max_y = min_y;
+    for (size_t i = 1; i < flat_path.size(); ++i) {
+        min_x = std::min(min_x, flat_path[i].first);
+        min_y = std::min(min_y, flat_path[i].second);
+        max_x = std::max(max_x, flat_path[i].first);
+        max_y = std::max(max_y, flat_path[i].second);
     }
 
-    // Supersampled glow buffer
-    std::vector<float> glow(s_width * s_height, 0.0f);
+    SampleMask& roi = get_raster_scratch().mask;
+    initialize_sample_mask(
+        buffer_info, min_x, min_y, max_x, max_y,
+        base_offset + radius + 1.0f, roi
+    );
+    if (roi.empty()) return;
+    std::vector<float>& coverage = get_raster_scratch().values;
+    coverage.assign(roi.samples.size(), 0.0f);
+    roi.samples.clear();
 
-    for (int y = 0; y < s_height; ++y)
-    {
-        for (int x = 0; x < s_width; ++x)
-        {
-            // Sample center (Y flipped to match your rasterization)
-            float fx = (float)x / supersample + 0.5f / supersample;
-            float fy = (float)(s_height - y - 1) / supersample + 0.5f / supersample;
-
-            // Min distance to centerline segments
-            float dmin = 1e30f;
-            for (const auto& s : segs)
-            {
-                float d = dist_point_seg(fx, fy, s.ax, s.ay, s.bx, s.by);
-                if (d < dmin) dmin = d;
-                if (dmin <= base_offset) break; // inside stroke; no glow
+    for (int local_y = 0; local_y < roi.height; ++local_y) {
+        const int y = roi.y + local_y;
+        for (int local_x = 0; local_x < roi.width; ++local_x) {
+            const int x = roi.x + local_x;
+            const float center_x = buffer_info.origin_x + x + 0.5f;
+            const float center_y = buffer_info.origin_y + buffer_info.height - y - 0.5f;
+            const float center_distance = std::sqrt(
+                segments->nearest_distance_squared(center_x, center_y)
+            );
+            const float sample_radius = 0.53125f;
+            if (center_distance + sample_radius <= base_offset ||
+                center_distance - sample_radius >= base_offset + radius) {
+                continue;
             }
-
-            // Only outside the stroke edge: (base_offset, base_offset + radius)
-            if (dmin > base_offset && dmin < base_offset + radius)
-            {
-                float t = (dmin - base_offset) / radius;           // 0 at edge, 1 at edge+radius
-                float sm = 1.0f - (t * t * (3.0f - 2.0f * t));     // smoothstep falloff 1..0
-                glow[y * s_width + x] = sm;
+            float sum = 0.0f;
+            for (int sy = 0; sy < 4; ++sy) {
+                for (int sx = 0; sx < 4; ++sx) {
+                    float fx, fy;
+                    sample_position(buffer_info, x, y, sx, sy, fx, fy);
+                    const float distance = std::sqrt(segments->nearest_distance_squared(fx, fy));
+                    if (distance > base_offset && distance < base_offset + radius) {
+                        const float t = (distance - base_offset) / radius;
+                        sum += 1.0f - (t * t * (3.0f - 2.0f * t));
+                    }
+                }
             }
+            coverage[(size_t)local_y * roi.width + local_x] = sum * (1.0f / 16.0f);
         }
     }
 
-    // Composite glow into destination
-    uint8_t* dst = buffer_info.bytes;
-    const float inv_samples = 1.0f / (supersample * supersample);
-
-    for (int y = 0; y < img_h; ++y)
-    {
-        for (int x = 0; x < img_w; ++x)
-        {
-            float sum = 0.0f;
-            for (int sy = 0; sy < supersample; ++sy)
-            for (int sx = 0; sx < supersample; ++sx)
-            {
-                int cx = x * supersample + sx;
-                int cy = y * supersample + sy;
-                sum += glow[cx + cy * s_width];
-            }
-
-            float cov = std::min(sum * inv_samples, 1.0f);
-            if (cov <= 0.0f) continue;
-
-            uint8_t sa = static_cast<uint8_t>(std::round(std::min(255.0f, a * cov)));
-            uint8_t sr = r, sg = g, sb = b;
-
-            if (premul && sa < 255)
-            {
-                float scale = sa / 255.0f;
-                sr = static_cast<uint8_t>(std::round(sr * scale));
-                sg = static_cast<uint8_t>(std::round(sg * scale));
-                sb = static_cast<uint8_t>(std::round(sb * scale));
-            }
-
-            int idx = (y * img_w + x) * channels;
-
-            if (channels == 4)
-            {
-                float src_a = sa / 255.0f;
-                float inv_a = 1.0f - src_a;
-
-                dst[idx + 0] = static_cast<uint8_t>(sr * src_a + dst[idx + 0] * inv_a);
-                dst[idx + 1] = static_cast<uint8_t>(sg * src_a + dst[idx + 1] * inv_a);
-                dst[idx + 2] = static_cast<uint8_t>(sb * src_a + dst[idx + 2] * inv_a);
-                dst[idx + 3] = static_cast<uint8_t>(sa + dst[idx + 3] * inv_a);
-            }
-            else if (channels == 3)
-            {
-                dst[idx + 0] = sr;
-                dst[idx + 1] = sg;
-                dst[idx + 2] = sb;
-            }
+    for (int local_y = 0; local_y < roi.height; ++local_y) {
+        const int y = roi.y + local_y;
+        for (int local_x = 0; local_x < roi.width; ++local_x) {
+            const float value = coverage[(size_t)local_y * roi.width + local_x];
+            if (value <= 0.0f) continue;
+            blend_stroke_pixel(buffer_info, roi.x + local_x, y, r, g, b, a, value, true);
         }
     }
 }
