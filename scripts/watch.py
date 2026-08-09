@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Watch bezier-path native sources and serialize development builds."""
+"""Watch local first-party libraries and serialize development builds."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ import signal
 import subprocess
 import sys
 import time
+from typing import Mapping
+
+
+EXCLUDED_DIRECTORIES = {".git", ".internal", ".local-build", "__pycache__", "build"}
+EXCLUDED_FILES = {".DS_Store", ".env", ".project", ".cproject"}
 
 
 def timestamp() -> str:
@@ -21,17 +26,57 @@ def log(message: str) -> None:
     print(f"[{timestamp()}] {message}", flush=True)
 
 
-def watched_files(repo_root: Path) -> list[Path]:
-    files = list((repo_root / "bezierpath" / "src").rglob("*.cpp"))
-    files.extend((repo_root / "bezierpath" / "include").rglob("*.h"))
-    files.append(repo_root / "bezierpath" / "ext.manifest")
-    return sorted(path for path in files if path.is_file())
+def watched_roots(
+    repo_root: Path,
+    environment: Mapping[str, str] | None = None,
+) -> tuple[Path, ...]:
+    values = os.environ if environment is None else environment
+    return (
+        repo_root / "bezierpath",
+        Path(
+            values.get("DEFOLD_CONTROLS_ROOT", repo_root.parent / "defold-controls")
+        ).resolve()
+        / "controls",
+        Path(
+            values.get(
+                "DEFOLD_SUDOKU_PLAYBOARD_ROOT",
+                repo_root.parent / "defold-sudoku-playboard",
+            )
+        ).resolve()
+        / "sudoku",
+        Path(
+            values.get("DEFOLD_HELPERS_ROOT", repo_root.parent / "defold-helpers")
+        ).resolve()
+        / "helpers",
+    )
 
 
-def source_digest(repo_root: Path) -> str:
+def watched_files(
+    repo_root: Path,
+    environment: Mapping[str, str] | None = None,
+) -> list[Path]:
+    files: list[Path] = []
+    for source_root in watched_roots(repo_root, environment):
+        if not source_root.is_dir():
+            continue
+        files.extend(
+            path
+            for path in source_root.rglob("*")
+            if path.is_file()
+            and path.name not in EXCLUDED_FILES
+            and path.suffix != ".pyc"
+            and not any(part in EXCLUDED_DIRECTORIES for part in path.parts)
+        )
+    return sorted(files)
+
+
+def source_digest(
+    repo_root: Path,
+    environment: Mapping[str, str] | None = None,
+) -> str:
     digest = hashlib.sha256()
-    for path in watched_files(repo_root):
-        digest.update(str(path.relative_to(repo_root)).encode())
+    for path in watched_files(repo_root, environment):
+        digest.update(str(path).encode())
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
@@ -59,7 +104,7 @@ def main() -> int:
     command = ["/usr/bin/make", "--no-print-directory", "dev-build"] if not build_command else ["/bin/bash", "-lc", build_command]
 
     if not watched_files(repo_root):
-        log("No native source files found; refusing to watch.")
+        log("No local package files found; refusing to watch.")
         return 1
 
     current_digest = source_digest(repo_root)
@@ -68,7 +113,7 @@ def main() -> int:
     process: subprocess.Popen[bytes] | None = None
     build_started = 0.0
 
-    log(f"Watching {len(watched_files(repo_root))} native files. Press Ctrl-C to stop.")
+    log(f"Watching {len(watched_files(repo_root))} local package files. Press Ctrl-C to stop.")
     try:
         while True:
             now = time.monotonic()

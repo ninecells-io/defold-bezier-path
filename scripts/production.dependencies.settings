@@ -1,0 +1,5 @@
+[project]
+dependencies#0 = https://corneliusbehrend:__GITHUB_TOKEN__@github.com/ninecells-io/defold-sudoku-playboard/archive/refs/tags/0.1.7.zip
+dependencies#1 = https://corneliusbehrend:__GITHUB_TOKEN__@github.com/ninecells-io/defold-controls/archive/refs/tags/0.2.1.zip
+dependencies#2 = https://corneliusbehrend:__GITHUB_TOKEN__@github.com/ninecells-io/defold-bezier-path/archive/refs/tags/0.2.2.zip
+dependencies#3 = https://github.com/ninecells-io/defold-helpers/archive/refs/tags/0.1.5.zip

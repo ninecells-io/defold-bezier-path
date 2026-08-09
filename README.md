@@ -51,12 +51,11 @@ See `benchmark/README.md` for the release-build baseline and acceptance gates.
 
 ## Local native-extension development
 
-The repository includes a macOS-only foreground build pipeline for native C++
-work. It runs the engine-independent regression tests first, then builds the
-sibling `defold-controls`, `defold-sudoku-playboard`, and `one-sudoku` projects
-against this checkout through a self-hosted Defold Extender. The real consumer
-projects remain pinned to the released bezier-path archive; only ignored
-staging copies receive the local Lua and native extension sources.
+The repository includes a macOS-only foreground build pipeline for the four
+sibling first-party projects. It runs the engine-independent regression tests,
+serves the `defold-bezier-path`, `defold-controls`, `defold-sudoku-playboard`,
+and `defold-helpers` working trees as local Defold library archives, then builds
+consumers through a self-hosted Defold Extender.
 
 ### Pinned toolchain
 
@@ -66,6 +65,7 @@ The development toolchain is deliberately pinned in `scripts/config.sh`:
 - Extender `extender-v2.12.4`
 - Xcode, macOS SDK, and iOS SDK 26.2
 - Apple Silicon macOS builds via `http://127.0.0.1:9010`
+- Local Defold dependency archives via `http://127.0.0.1:9012`
 
 Install Xcode 26.2 as `/Applications/Xcode_26.2.app`. It can coexist with a
 newer `/Applications/Xcode.app`; the setup does not change the system-wide
@@ -91,18 +91,30 @@ Gradle's instrumentation agent.
 
 ### Everyday workflow
 
+Start both local services from this repository:
+
+```sh
+make extender-start
+```
+
+The Extender lifecycle commands manage both the native build server and the
+companion dependency archive server. The normal `one-sudoku` project is pinned
+to the four localhost archives and its shared Editor settings select the local
+Extender. In Defold, use **Project → Fetch Libraries** after changing an
+exported package file.
+
 Start the foreground watcher from this repository:
 
 ```sh
 make watch
 ```
 
-The command starts Extender if needed, performs an initial build of all three
-consumers, and watches native `.cpp`, `.h`, and `ext.manifest` files. Saves are
-debounced. If files change during a build, one follow-up build is queued. Test
-or Extender failures are printed but do not terminate the watcher; fix the
-source and save again. Stop watching with Ctrl-C. Extender stays available for
-later builds and can be managed explicitly:
+The command starts both services if needed, performs an initial build of all
+three consumers, and watches every exported file in all four first-party
+packages. Saves are debounced. If files change during a build, one follow-up
+build is queued. Test or service failures are printed but do not terminate the
+watcher; fix the source and save again. Stop watching with Ctrl-C. The services
+stay available for later builds and can be managed explicitly:
 
 ```sh
 make extender-status
@@ -131,10 +143,11 @@ The accepted identifiers are `defold-controls`, `defold-sudoku-playboard`, and
 `one-sudoku`. Their sibling checkout locations can be overridden with
 `DEFOLD_CONTROLS_ROOT`, `DEFOLD_SUDOKU_PLAYBOARD_ROOT`, and `ONE_SUDOKU_ROOT`.
 Build artifacts and staged projects are stored below
-`.local-build/<consumer>-stage/`. Each development build is isolated: it
-removes the released bezier-path dependency from the staged `game.project`,
-injects this checkout's complete `bezierpath/` directory, and asks the local
-Extender to compile the C++ extension. No source consumer project is modified.
+`.local-build/<consumer>-stage/`. Each development build is isolated: all
+first-party dependency URLs in the staged `game.project` are normalized to the
+local archive server, while third-party URLs remain unchanged. The local
+Extender compiles the bezier-path C++ extension. No source consumer project is
+modified by staging.
 
 Resolved dependency archives from each consumer are copied into its staging
 cache when available. Private dependency URLs use the app's existing
@@ -153,10 +166,13 @@ or copied into staging roots.
 
 ### Hosted production build
 
-Production uses the real `one-sudoku/game.project`, verifies that it is still
-pinned to bezier-path 0.2.2, rejects localhost dependencies, and explicitly
-uses Defold's hosted build service. It downloads pinned Bob automatically and
-does not require Xcode 26.2 or the local Extender:
+Production uses the real `one-sudoku` sources plus
+`scripts/production.dependencies.settings`. The settings override the four
+localhost development URLs with pinned GitHub releases, and the build
+explicitly uses Defold's hosted build service. The production command validates
+all pins, renders private dependency authentication into a temporary mode-0600
+settings file, and never modifies the source project. It downloads pinned Bob
+automatically and does not require Xcode 26.2 or the local Extender:
 
 ```sh
 make production-build
@@ -172,6 +188,7 @@ The default is an `arm64-macos` release archive. `PRODUCTION_PLATFORM` and
 ### Troubleshooting and cleanup
 
 - Extender logs: `.local-build/extender-extender-v2.12.4/server/app/logs/`
+- Dependency server log: `.local-build/dependency-server.log`
 - Temporary SDK package server log: `.local-build/package-server.log`
 - Staged consumers: `.local-build/defold-controls-stage/`,
   `.local-build/defold-sudoku-playboard-stage/`, and

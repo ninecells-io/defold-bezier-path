@@ -58,20 +58,34 @@ def github_token(repo_root: Path) -> str | None:
     return values.get("GITHUB_TOKEN") or values.get("GH_TOKEN")
 
 
+def render_placeholders(
+    settings_text: str,
+    token: str | None,
+    source_name: str,
+) -> tuple[str, list[str]]:
+    if TOKEN_PLACEHOLDER not in settings_text:
+        return settings_text, []
+    if not token:
+        raise ValueError(
+            f"{source_name} contains {TOKEN_PLACEHOLDER}; set GITHUB_TOKEN "
+            "in the bezier-path .env file or environment"
+        )
+    encoded_token = quote(token, safe="")
+    return settings_text.replace(TOKEN_PLACEHOLDER, encoded_token), [token, encoded_token]
+
+
 def dependency_settings(project_text: str, token: str | None) -> tuple[str | None, list[str]]:
     dependency = re.compile(r"^dependencies#\d+\s*=.*$", re.MULTILINE)
     dependency_lines = dependency.findall(project_text)
     placeholder_lines = [line for line in dependency_lines if TOKEN_PLACEHOLDER in line]
     if not placeholder_lines:
         return None, []
-    if not token:
-        raise ValueError(
-            "game.project contains __GITHUB_TOKEN__; set GITHUB_TOKEN in the bezier-path .env file or environment"
-        )
-
-    encoded_token = quote(token, safe="")
-    rendered = [line.replace(TOKEN_PLACEHOLDER, encoded_token) for line in dependency_lines]
-    return "[project]\n" + "\n".join(rendered) + "\n", [token, encoded_token]
+    rendered, secrets = render_placeholders(
+        "[project]\n" + "\n".join(dependency_lines) + "\n",
+        token,
+        "game.project",
+    )
+    return rendered, secrets
 
 
 def redact(text: str, secrets: list[str]) -> str:
@@ -91,6 +105,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--variant", required=True)
     parser.add_argument("--defoldsdk", required=True)
     parser.add_argument("--build-server", required=True)
+    parser.add_argument(
+        "--settings",
+        action="append",
+        default=[],
+        help="Additional Bob settings file; may be specified more than once",
+    )
     parser.add_argument("--archive", action="store_true")
     parser.add_argument("commands", nargs="*", default=["resolve", "build"])
     return parser.parse_args()
@@ -108,11 +128,25 @@ def main() -> int:
     try:
         token = github_token(repo_root)
         settings_text, secrets = dependency_settings(project_file.read_text(), token)
-    except ValueError as error:
+        rendered_settings: list[tuple[str, str]] = []
+        if settings_text is not None:
+            rendered_settings.append(("credentials", settings_text))
+        for index, raw_path in enumerate(args.settings):
+            settings_source = Path(raw_path).resolve()
+            if not settings_source.is_file():
+                raise ValueError(f"settings file was not found: {settings_source}")
+            rendered, settings_secrets = render_placeholders(
+                settings_source.read_text(),
+                token,
+                str(settings_source),
+            )
+            rendered_settings.append((f"settings-{index}", rendered))
+            secrets.extend(settings_secrets)
+    except (OSError, ValueError) as error:
         print(f"Bob authentication error: {error}", file=sys.stderr)
         return 1
 
-    settings_path: Path | None = None
+    settings_paths: list[Path] = []
     settings_directory: Path | None = None
     command = [
         args.java,
@@ -136,7 +170,7 @@ def main() -> int:
 
     process: subprocess.Popen[str] | None = None
     try:
-        if settings_text is not None:
+        if rendered_settings:
             # Bob 1.13.0 expects settings paths to be absolute when it turns them
             # into build inputs, and mounts their parent directories. Give each
             # invocation a private one-file directory so Bob cannot recursively
@@ -148,15 +182,17 @@ def main() -> int:
             settings_directory = Path(
                 tempfile.mkdtemp(prefix="bob-settings-", dir=local_build_root)
             )
-            descriptor, temporary_name = tempfile.mkstemp(
-                prefix="credentials-",
-                suffix=".settings",
-                dir=settings_directory,
-            )
-            settings_path = Path(temporary_name)
-            with os.fdopen(descriptor, "w") as settings_file:
-                settings_file.write(settings_text)
-            command.extend(["--settings", str(settings_path)])
+            for prefix, rendered in rendered_settings:
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=f"{prefix}-",
+                    suffix=".settings",
+                    dir=settings_directory,
+                )
+                settings_path = Path(temporary_name)
+                settings_paths.append(settings_path)
+                with os.fdopen(descriptor, "w") as settings_file:
+                    settings_file.write(rendered)
+                command.extend(["--settings", str(settings_path)])
 
         command.extend(args.commands or ["resolve", "build"])
         process = subprocess.Popen(
@@ -177,7 +213,7 @@ def main() -> int:
             process.terminate()
         return 130
     finally:
-        if settings_path is not None:
+        for settings_path in settings_paths:
             settings_path.unlink(missing_ok=True)
         if settings_directory is not None:
             try:

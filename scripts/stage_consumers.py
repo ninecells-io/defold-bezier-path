@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create isolated consumer build roots using this local extension."""
+"""Create isolated consumer build roots using local first-party libraries."""
 
 from __future__ import annotations
 
@@ -12,9 +12,20 @@ import shutil
 import subprocess
 import sys
 from typing import Mapping, NoReturn, Sequence
+from urllib.parse import urlparse
 
 
-RELEASE_DEPENDENCY_MARKER = "defold-bezier-path/archive/"
+FIRST_PARTY_PACKAGES = (
+    "defold-sudoku-playboard",
+    "defold-controls",
+    "defold-bezier-path",
+    "defold-helpers",
+)
+EXPECTED_PACKAGES = {
+    "defold-controls": {"defold-bezier-path", "defold-helpers"},
+    "defold-sudoku-playboard": {"defold-bezier-path", "defold-helpers"},
+    "one-sudoku": set(FIRST_PARTY_PACKAGES),
+}
 DEFAULT_CONSUMERS = (
     "defold-controls",
     "defold-sudoku-playboard",
@@ -101,13 +112,34 @@ def run_rsync(source: Path, destination: Path, *extra: str) -> None:
     subprocess.run(command, check=True)
 
 
-def rewrite_dependencies(project_file: Path) -> None:
+def first_party_package(value: str) -> str | None:
+    parsed = urlparse(value)
+    for package in FIRST_PARTY_PACKAGES:
+        if (
+            parsed.scheme in ("http", "https")
+            and parsed.hostname in ("127.0.0.1", "localhost")
+            and parsed.path == f"/{package}.zip"
+        ):
+            return package
+        if (
+            parsed.hostname == "github.com"
+            and parsed.path.startswith(f"/ninecells-io/{package}/archive/")
+            and parsed.path.endswith(".zip")
+        ):
+            return package
+    return None
+
+
+def rewrite_dependencies(
+    project_file: Path,
+    expected_packages: set[str],
+    local_dependency_url: str,
+) -> None:
     lines = project_file.read_text().splitlines(keepends=True)
-    dependency = re.compile(r"^(\s*)dependencies#\d+(\s*=\s*)(.*?)(\r?\n)?$")
+    dependency = re.compile(r"^(\s*)dependencies#(\d+)(\s*=\s*)(.*?)(\r?\n)?$")
     in_project = False
     found = 0
-    removed = 0
-    next_index = 0
+    matched: list[str] = []
     rewritten: list[str] = []
 
     for line in lines:
@@ -121,62 +153,59 @@ def rewrite_dependencies(project_file: Path) -> None:
             continue
 
         found += 1
-        value = match.group(3)
-        if RELEASE_DEPENDENCY_MARKER in value:
-            removed += 1
-            continue
+        value = match.group(4)
+        package = first_party_package(value)
+        if package is not None:
+            matched.append(package)
+            value = f"{local_dependency_url.rstrip('/')}/{package}.zip"
 
-        newline = match.group(4) or ""
+        newline = match.group(5) or ""
         rewritten.append(
-            f"{match.group(1)}dependencies#{next_index}{match.group(2)}{value}{newline}"
+            f"{match.group(1)}dependencies#{match.group(2)}"
+            f"{match.group(3)}{value}{newline}"
         )
-        next_index += 1
 
     if found == 0:
         fail(f"no project dependencies found in {project_file}")
-    if removed != 1:
-        fail(f"expected exactly one released bezier-path dependency, removed {removed}")
+    duplicates = sorted(package for package in set(matched) if matched.count(package) > 1)
+    if duplicates:
+        fail(f"duplicate first-party dependencies in {project_file}: {', '.join(duplicates)}")
+    if set(matched) != expected_packages:
+        missing = sorted(expected_packages - set(matched))
+        unexpected = sorted(set(matched) - expected_packages)
+        details = []
+        if missing:
+            details.append(f"missing {', '.join(missing)}")
+        if unexpected:
+            details.append(f"unexpected {', '.join(unexpected)}")
+        fail(f"first-party dependency mismatch in {project_file}: {'; '.join(details)}")
 
     project_file.write_text("".join(rewritten))
 
 
-def extension_contents(extension_root: Path) -> dict[Path, bytes]:
-    return {
-        path.relative_to(extension_root): path.read_bytes()
-        for path in sorted(extension_root.rglob("*"))
-        if path.is_file() and path.name != ".DS_Store"
-    }
-
-
-def validate_stage(stage_root: Path, local_extension: Path) -> None:
+def validate_stage(
+    stage_root: Path,
+    expected_packages: set[str],
+    local_dependency_url: str,
+) -> None:
     project_text = (stage_root / "game.project").read_text()
-    if RELEASE_DEPENDENCY_MARKER in project_text:
-        fail("released bezier-path dependency is still present in staged game.project")
-
-    staged_extension = stage_root / "bezierpath"
-    required_files = (
-        staged_extension / "ext.manifest",
-        staged_extension / "bezierpath.lua",
-        staged_extension / "src",
-        staged_extension / "include",
-    )
-    if not all(path.exists() for path in required_files):
-        fail("local Lua or native extension sources are missing from the staging root")
-    if extension_contents(staged_extension) != extension_contents(local_extension):
-        fail("staged extension does not match the local extension")
+    for package in expected_packages:
+        expected_url = f"{local_dependency_url.rstrip('/')}/{package}.zip"
+        if project_text.count(expected_url) != 1:
+            fail(f"staged project does not contain exactly one {expected_url}")
+        if f"github.com/ninecells-io/{package}/archive/" in project_text:
+            fail(f"released {package} dependency remains in staged game.project")
 
 
 def stage_consumer(
     consumer: Consumer,
     repo_root: Path,
-    local_extension: Path,
+    local_dependency_url: str,
 ) -> None:
     if shutil.which("rsync") is None:
         fail("rsync is required")
     if not (consumer.root / "game.project").is_file():
         fail(f"{consumer.identifier} project was not found at {consumer.root}")
-    if not (local_extension / "ext.manifest").is_file():
-        fail(f"local extension was not found at {local_extension}")
     if consumer.stage_root in (consumer.root, repo_root):
         fail("staging root must not be a source repository")
 
@@ -207,17 +236,16 @@ def stage_consumer(
             "--delete",
         )
 
-    rewrite_dependencies(consumer.stage_root / "game.project")
-    run_rsync(
-        local_extension,
-        consumer.stage_root / "bezierpath",
-        "--delete",
-        "--exclude=.DS_Store",
+    expected_packages = EXPECTED_PACKAGES[consumer.identifier]
+    rewrite_dependencies(
+        consumer.stage_root / "game.project",
+        expected_packages,
+        local_dependency_url,
     )
-    validate_stage(consumer.stage_root, local_extension)
+    validate_stage(consumer.stage_root, expected_packages, local_dependency_url)
 
     print(f"Staged {consumer.identifier} at {consumer.stage_root}")
-    print("Released bezier-path dependency removed; local bezierpath/ injected.")
+    print("First-party dependencies point to the local dependency server.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -233,10 +261,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parent.parent
-    local_extension = repo_root / "bezierpath"
     configs = consumer_configs(repo_root)
+    local_dependency_url = os.environ.get(
+        "LOCAL_DEPENDENCY_URL", "http://127.0.0.1:9012"
+    )
     for consumer in select_consumers(args.consumers, configs):
-        stage_consumer(consumer, repo_root, local_extension)
+        stage_consumer(consumer, repo_root, local_dependency_url)
     return 0
 
 

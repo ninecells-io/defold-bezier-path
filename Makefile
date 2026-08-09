@@ -3,6 +3,7 @@ SHELL := /bin/bash
 PYTHON ?= python3
 DEFOLD_CONTROLS_ROOT ?= $(abspath ../defold-controls)
 DEFOLD_SUDOKU_PLAYBOARD_ROOT ?= $(abspath ../defold-sudoku-playboard)
+DEFOLD_HELPERS_ROOT ?= $(abspath ../defold-helpers)
 ONE_SUDOKU_ROOT ?= $(abspath ../one-sudoku)
 CONSUMERS ?= defold-controls defold-sudoku-playboard one-sudoku
 PRODUCTION_PLATFORM ?= arm64-macos
@@ -10,6 +11,7 @@ PRODUCTION_VARIANT ?= release
 
 export DEFOLD_CONTROLS_ROOT
 export DEFOLD_SUDOKU_PLAYBOARD_ROOT
+export DEFOLD_HELPERS_ROOT
 export ONE_SUDOKU_ROOT
 export CONSUMERS
 export PRODUCTION_PLATFORM
