@@ -53,9 +53,10 @@ See `benchmark/README.md` for the release-build baseline and acceptance gates.
 
 The repository includes a macOS-only foreground build pipeline for native C++
 work. It runs the engine-independent regression tests first, then builds the
-sibling `one-sudoku` app against this checkout through a self-hosted Defold
-Extender. The real app project remains pinned to the released bezier-path
-archive; only an ignored staging copy receives the local extension.
+sibling `defold-controls`, `defold-sudoku-playboard`, and `one-sudoku` projects
+against this checkout through a self-hosted Defold Extender. The real consumer
+projects remain pinned to the released bezier-path archive; only ignored
+staging copies receive the local Lua and native extension sources.
 
 ### Pinned toolchain
 
@@ -96,12 +97,12 @@ Start the foreground watcher from this repository:
 make watch
 ```
 
-The command starts Extender if needed, performs an initial build, and watches
-native `.cpp`, `.h`, and `ext.manifest` files. Saves are debounced. If files
-change during a build, one follow-up build is queued. Test or Extender failures
-are printed but do not terminate the watcher; fix the source and save again.
-Stop watching with Ctrl-C. Extender stays available for later builds and can be
-managed explicitly:
+The command starts Extender if needed, performs an initial build of all three
+consumers, and watches native `.cpp`, `.h`, and `ext.manifest` files. Saves are
+debounced. If files change during a build, one follow-up build is queued. Test
+or Extender failures are printed but do not terminate the watcher; fix the
+source and save again. Stop watching with Ctrl-C. Extender stays available for
+later builds and can be managed explicitly:
 
 ```sh
 make extender-status
@@ -113,14 +114,30 @@ Individual pipeline stages are also available:
 
 ```sh
 make test       # native regression and pipeline unit tests
-make stage-app  # refresh the isolated one-sudoku staging root
-make dev-build  # tests, stages, and builds through local Extender
+make stage-consumers # refresh all isolated consumer staging roots
+make stage-app       # refresh only the isolated one-sudoku staging root
+make dev-build       # test, stage, and build all consumers through local Extender
 ```
 
-`ONE_SUDOKU_ROOT=/absolute/path make dev-build` overrides the default sibling
-checkout. Build artifacts and the staged app are stored below `.local-build/`.
-Resolved dependency archives from the app are copied into the staging cache
-when available. The private dependency URLs use the app's existing
+Use `CONSUMERS` to stage, build, or watch a subset without changing the default:
+
+```sh
+make dev-build CONSUMERS="defold-controls"
+make stage-consumers CONSUMERS="defold-sudoku-playboard one-sudoku"
+make watch CONSUMERS="one-sudoku"
+```
+
+The accepted identifiers are `defold-controls`, `defold-sudoku-playboard`, and
+`one-sudoku`. Their sibling checkout locations can be overridden with
+`DEFOLD_CONTROLS_ROOT`, `DEFOLD_SUDOKU_PLAYBOARD_ROOT`, and `ONE_SUDOKU_ROOT`.
+Build artifacts and staged projects are stored below
+`.local-build/<consumer>-stage/`. Each development build is isolated: it
+removes the released bezier-path dependency from the staged `game.project`,
+injects this checkout's complete `bezierpath/` directory, and asks the local
+Extender to compile the C++ extension. No source consumer project is modified.
+
+Resolved dependency archives from each consumer are copied into its staging
+cache when available. Private dependency URLs use the app's existing
 `__GITHUB_TOKEN__` convention. Store the token in the ignored repository-local
 `.env` file:
 
@@ -131,7 +148,8 @@ GITHUB_TOKEN=github_pat_your_token
 `GITHUB_TOKEN` or `GH_TOKEN` from the process environment takes precedence over
 `.env`. The file is parsed as data and is never shell-sourced. During a build,
 the token is written only to a mode-0600 temporary Bob settings file, filtered
-from Bob output, and deleted afterward; source project files are never modified.
+from Bob output, and deleted afterward; source project files are never modified
+or copied into staging roots.
 
 ### Hosted production build
 
@@ -155,7 +173,9 @@ The default is an `arm64-macos` release archive. `PRODUCTION_PLATFORM` and
 
 - Extender logs: `.local-build/extender-extender-v2.12.4/server/app/logs/`
 - Temporary SDK package server log: `.local-build/package-server.log`
-- Staged app: `.local-build/one-sudoku-stage/`
+- Staged consumers: `.local-build/defold-controls-stage/`,
+  `.local-build/defold-sudoku-playboard-stage/`, and
+  `.local-build/one-sudoku-stage/`
 - A failed `make setup-check` makes no downloads or system changes.
 - If setup reports a missing `libinstrument.dylib`, rerun it after this
   pipeline update; `make setup-local-extender` will select or install the full
