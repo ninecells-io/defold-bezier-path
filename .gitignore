@@ -11,3 +11,5 @@ builtins
 .internal
 /.editor_settings
 bezierpath.zip
+/.local-build/
+/.env
