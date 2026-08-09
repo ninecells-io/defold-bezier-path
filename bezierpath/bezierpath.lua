@@ -351,21 +351,21 @@ function M.create_texture(name, width, height, draw_fn, params, factor)
 
     factor = factor or default_texture_factor
 
-	width = math.floor(width * factor)
-	height = math.floor(height * factor)
+    width = math.floor(width * factor)
+    height = math.floor(height * factor)
 
     -- create an empty texture as replacement for a missing gui.texture_exists()
-	local should_create_texture = gui.new_texture(name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
+    local should_create_texture = gui.new_texture(name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
 
-	if should_create_texture then
-		gui.delete_texture(name)
-		local texture = M.draw_texture(width, height, draw_fn, factor, params)
-		if not M.new_texture(width, height, name, texture) then
+    if should_create_texture then
+        gui.delete_texture(name)
+        local texture = M.draw_texture(width, height, draw_fn, factor, params)
+        if not M.new_texture(width, height, name, texture) then
             error("Unable to create texture")
         end
-	end
+    end
 
-	return name
+    return name
 end
 
 
