@@ -31,8 +31,42 @@ end)
 `get_path_bounds(handle, padding)` returns an `{ x, y, width, height }` table.
 `draw_texture_region(bounds, draw_fn, params)` renders board-coordinate paths
 into a factor-1 cropped RGBA buffer and returns `pixels, normalized_bounds`.
-`create_texture_region(name, bounds, draw_fn, params)` creates the equivalent
-dynamic GUI texture and returns `name, normalized_bounds`.
+`create_texture_region(key, bounds, draw_fn, params)` creates the equivalent
+dynamic GUI texture and returns `texture_id, normalized_bounds`.
+
+## Optional persistent texture cache
+
+High-level textures can be cached as validated RGBA files in Defold's portable
+application save location. Caching is disabled unless the consumer configures it
+before creating GUI textures:
+
+```lua
+local bezierpath = require("bezierpath/bezierpath")
+
+bezierpath.configure_texture_cache({
+    enabled = true,
+    folder = "my-game-bezier-textures",
+    version = sys.get_config_string("project.version", "dev") .. ":1",
+})
+```
+
+`folder` is passed to `sys.get_save_file()` as the application-specific save
+namespace. `version` belongs to the consumer; changing it removes the files
+tracked by the previous cache manifest and causes textures to be drawn again.
+`bezierpath.clear_texture_cache()` performs the same invalidation immediately.
+
+The first argument to `create_texture`, `create_texture_region`, and
+`add_gui_box` is a stable logical cache key. It must include every consumer
+input that changes the resulting pixels. It is not a GUI texture name:
+bezier-path hashes the key together with the cache version, texture kind,
+dimensions, and scale factor, and returns an opaque runtime texture id. Owners
+that explicitly delete dynamic textures must retain and delete that returned
+id. `add_gui_box` returns `node, texture_id` for this purpose.
+
+On a cache hit, the drawing callback is skipped. Missing, corrupt, truncated,
+or unwritable cache files are treated as misses, so texture generation and GUI
+rendering continue normally. `draw_texture` and other low-level byte-buffer
+operations remain uncached.
 
 Low-level `buffer_info` tables may include `origin_x` and `origin_y`; both
 default to zero. The origin maps a cropped buffer back into the coordinate

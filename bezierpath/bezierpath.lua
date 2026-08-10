@@ -1,9 +1,18 @@
 local color_helper = require("helpers.color_helper")
 local gui_helper = require("helpers.gui_helper")
+local texture_cache = require("bezierpath.texture_cache")
 
 local default_texture_factor = 2
 
 local M = {}
+
+function M.configure_texture_cache(options)
+    texture_cache.configure(options)
+end
+
+function M.clear_texture_cache()
+    return texture_cache.clear()
+end
 
 --HIGH LEVEL Methods
 
@@ -321,66 +330,83 @@ function M.draw_texture_region(bounds, draw_fn, params)
     return buffer.get_bytes(buffer_info.buffer, hash("rgba")), region
 end
 
-function M.add_gui_box(root, width, height, pos, visible, texture_name, draw_fn, params)
-    local texture = M.draw_texture(width, height, draw_fn, params)
+function M.add_gui_box(root, width, height, pos, visible, texture_key, draw_fn, params)
+    local texture_name = M.create_texture(texture_key, width, height,
+        function(buffer_info, _, draw_params)
+            draw_fn(buffer_info, draw_params)
+        end,
+        params,
+        1
+    )
     local box = gui_helper.create_box_node(root, width, height, pos, nil, visible)
-    M.set_node_texture(box, width, height, texture_name, texture)
+    gui.set_texture(box, texture_name)
 
-    return box
+    return box, texture_name
 end
 
-function M.new_texture(width, height, name, texture, texture_size)
-    if texture ~= nil then
-        local w = texture_size and texture_size.width or width
-        local h = texture_size and texture_size.height or height
-        return gui.new_texture(name, w, h, image.TYPE_RGBA, texture)
+local function create_gui_texture(texture_name, width, height, pixels_fn)
+    local created, reason = gui.new_texture(texture_name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
+    if not created then
+        if reason == nil or reason == gui.RESULT_TEXTURE_ALREADY_EXISTS then
+            return texture_name, false
+        end
+        error("Unable to reserve texture: " .. tostring(reason))
     end
+    gui.delete_texture(texture_name)
 
-    return false
-end
-
-function M.set_node_texture(node, width, height, name, texture, texture_size)
-    if M.new_texture(width, height, name, texture, texture_size) then
-        gui.set_texture(node, name)
-    elseif texture ~= nil then
-        error("Unable to create texture")
+    local pixels = pixels_fn()
+    local ok, create_reason = gui.new_texture(texture_name, width, height, image.TYPE_RGBA, pixels)
+    if not ok then
+        error("Unable to create texture: " .. tostring(create_reason))
     end
+    return texture_name, true
 end
 
-function M.create_texture(name, width, height, draw_fn, params, factor)
+function M.new_texture(width, height, key, texture, texture_size)
+    if texture == nil then return nil end
+    local w = texture_size and texture_size.width or width
+    local h = texture_size and texture_size.height or height
+    local record = texture_cache.describe("bytes", key, w, h, 1)
+    local texture_name = create_gui_texture(record.runtime_name, w, h, function() return texture end)
+    return texture_name
+end
+
+function M.set_node_texture(node, width, height, key, texture, texture_size)
+    local texture_name = M.new_texture(width, height, key, texture, texture_size)
+    if texture_name ~= nil then gui.set_texture(node, texture_name) end
+    return texture_name
+end
+
+function M.create_texture(key, width, height, draw_fn, params, factor)
 
     factor = factor or default_texture_factor
 
     width = math.floor(width * factor)
     height = math.floor(height * factor)
 
-    -- create an empty texture as replacement for a missing gui.texture_exists()
-    local should_create_texture = gui.new_texture(name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
-
-    if should_create_texture then
-        gui.delete_texture(name)
-        local texture = M.draw_texture(width, height, draw_fn, factor, params)
-        if not M.new_texture(width, height, name, texture) then
-            error("Unable to create texture")
-        end
-    end
-
-    return name
+    local record = texture_cache.describe("texture", key, width, height, factor)
+    local texture_name = create_gui_texture(record.runtime_name, width, height, function()
+        local pixels = texture_cache.load(record)
+        if pixels ~= nil then return pixels end
+        pixels = M.draw_texture(width, height, draw_fn, factor, params)
+        texture_cache.store(record, pixels)
+        return pixels
+    end)
+    return texture_name
 end
 
 
-function M.create_texture_region(name, bounds, draw_fn, params)
+function M.create_texture_region(key, bounds, draw_fn, params)
     local region = normalize_bounds(bounds)
-    local should_create_texture = gui.new_texture(name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
-    if should_create_texture then
-        gui.delete_texture(name)
-        local texture
-        texture, region = M.draw_texture_region(region, draw_fn, params)
-        if not M.new_texture(region.width, region.height, name, texture) then
-            error("Unable to create texture")
-        end
-    end
-    return name, region
+    local record = texture_cache.describe("region", key, region.width, region.height, 1)
+    local texture_name = create_gui_texture(record.runtime_name, region.width, region.height, function()
+        local pixels = texture_cache.load(record)
+        if pixels ~= nil then return pixels end
+        pixels, region = M.draw_texture_region(region, draw_fn, params)
+        texture_cache.store(record, pixels)
+        return pixels
+    end)
+    return texture_name, region
 end
 
 return M
