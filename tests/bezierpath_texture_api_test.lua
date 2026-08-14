@@ -13,6 +13,7 @@ function hash_to_hex(value) return tostring(value) end
 
 local dynamic_textures = {}
 local texture_creations = 0
+local texture_deletions = 0
 gui = {
     RESULT_TEXTURE_ALREADY_EXISTS = 1,
     new_texture = function(name, width, height, texture_type, pixels)
@@ -21,7 +22,10 @@ gui = {
         texture_creations = texture_creations + 1
         return true
     end,
-    delete_texture = function(name) dynamic_textures[name] = nil end,
+    delete_texture = function(name)
+        if dynamic_textures[name] then texture_deletions = texture_deletions + 1 end
+        dynamic_textures[name] = nil
+    end,
     set_texture = function(node, name) node.texture = name end,
 }
 
@@ -78,5 +82,18 @@ end)
 assert(region_name == repeated_name and regions == 1)
 assert(region.x == 1 and region.y == 2 and region.width == 5 and region.height == 6)
 assert(texture_creations > 0)
+
+local layout = {}
+api.begin_texture_generation(layout)
+local old_layout_texture = api.create_texture("layout.panel", 10, 6, function() end)
+api.end_texture_generation(layout)
+assert(dynamic_textures[old_layout_texture], "the current layout texture must remain available")
+
+api.begin_texture_generation(layout)
+assert(not dynamic_textures[old_layout_texture], "the previous layout texture must be reclaimed")
+local new_layout_texture = api.create_texture("layout.panel", 12, 6, function() end)
+api.end_texture_generation(layout)
+assert(dynamic_textures[new_layout_texture], "the replacement layout texture must be available")
+assert(texture_deletions > 0, "starting a replacement generation must delete old textures")
 
 print("bezier-path texture API tests passed")

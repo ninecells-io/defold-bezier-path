@@ -6,6 +6,36 @@ local default_texture_factor = 2
 
 local M = {}
 
+-- GUI textures belong to a GUI scene and survive until they are explicitly
+-- deleted or the scene is destroyed. Controls commonly create size-specific
+-- textures, so a live window resize can otherwise exhaust the scene's dynamic
+-- texture slots. A generation lets a scene reclaim the textures produced by
+-- its previous full layout immediately before producing the replacement set.
+local texture_generations = setmetatable({}, { __mode = "k" })
+local active_texture_generation
+
+function M.begin_texture_generation(owner)
+    assert(owner ~= nil, "texture generation owner is required")
+    assert(active_texture_generation == nil, "a texture generation is already active")
+
+    local previous = texture_generations[owner]
+    if previous ~= nil then
+        for texture_name in pairs(previous) do
+            pcall(gui.delete_texture, texture_name)
+        end
+    end
+
+    local textures = {}
+    texture_generations[owner] = textures
+    active_texture_generation = { owner = owner, textures = textures }
+end
+
+function M.end_texture_generation(owner)
+    assert(active_texture_generation ~= nil, "no texture generation is active")
+    assert(active_texture_generation.owner == owner, "texture generation owner mismatch")
+    active_texture_generation = nil
+end
+
 function M.configure_texture_cache(options)
     texture_cache.configure(options)
 end
@@ -345,6 +375,9 @@ function M.add_gui_box(root, width, height, pos, visible, texture_key, draw_fn, 
 end
 
 local function create_gui_texture(texture_name, width, height, pixels_fn)
+    if active_texture_generation ~= nil then
+        active_texture_generation.textures[texture_name] = true
+    end
     local created, reason = gui.new_texture(texture_name, 1, 1, image.TYPE_RGB, string.rep('\0', 3))
     if not created then
         if reason == nil or reason == gui.RESULT_TEXTURE_ALREADY_EXISTS then
