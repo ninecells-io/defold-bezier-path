@@ -54,6 +54,22 @@ end
 
 local api = require("bezierpath.bezierpath")
 api.configure_texture_cache({ enabled = false })
+assert(api.get_default_texture_factor() == 2)
+api.set_default_texture_factor(3)
+local configured = api.create_texture("configured.factor", 4, 3, function(buffer_info, factor)
+    assert(factor == 3)
+    assert(buffer_info.width == 12 and buffer_info.height == 9)
+end)
+assert(dynamic_textures[configured].width == 12 and dynamic_textures[configured].height == 9)
+api.set_default_texture_factor(2)
+assert(api.set_default_texture_factor(1) == 2)
+assert(api.set_default_texture_factor(0 / 0) == 2)
+assert(api.get_default_texture_factor() == 2)
+local fallback = api.create_texture("invalid.explicit.factor", 4, 3, function(buffer_info, factor)
+    assert(factor == 2)
+    assert(buffer_info.width == 8 and buffer_info.height == 6)
+end, nil, 0)
+assert(dynamic_textures[fallback].width == 8 and dynamic_textures[fallback].height == 6)
 
 local draws = 0
 local first = api.create_texture("button.primary", 4, 3, function(_, factor, params)

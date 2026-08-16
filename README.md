@@ -13,6 +13,18 @@ Inspired by Apples UIKit UIBezierPath class, this extension for the [Defold](htt
 * Add inner or outer drop shadows
 * Add alpha masks
 
+## Texture supersampling
+
+Generated textures default to 2x supersampling. Applications with density-independent GUI roots can match the texture resolution to the effective display scale:
+
+```lua
+local bezierpath = require("bezierpath/bezierpath")
+local factor = math.max(2, window.get_display_scale() * interface_scale)
+bezierpath.set_default_texture_factor(factor)
+```
+
+`get_default_texture_factor()` returns the current default. The setter clamps values below 2 to 2 and falls back to 2 for invalid numbers. An explicit factor passed to `create_texture()` still overrides it, and the factor remains part of the texture cache identity.
+
 ## Scoped paths and cropped textures
 
 Paths use stable numeric handles. Deleting one path does not change any other

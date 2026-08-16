@@ -2,9 +2,24 @@ local color_helper = require("helpers.color_helper")
 local gui_helper = require("helpers.gui_helper")
 local texture_cache = require("bezierpath.texture_cache")
 
-local default_texture_factor = 2
+local MINIMUM_TEXTURE_FACTOR = 2
+local default_texture_factor = MINIMUM_TEXTURE_FACTOR
 
 local M = {}
+
+local function is_finite(value)
+    return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+function M.set_default_texture_factor(factor)
+    default_texture_factor = is_finite(factor) and math.max(MINIMUM_TEXTURE_FACTOR, factor)
+        or MINIMUM_TEXTURE_FACTOR
+    return default_texture_factor
+end
+
+function M.get_default_texture_factor()
+    return default_texture_factor
+end
 
 -- GUI textures belong to a GUI scene and survive until they are explicitly
 -- deleted or the scene is destroyed. Controls commonly create size-specific
@@ -413,6 +428,7 @@ end
 function M.create_texture(key, width, height, draw_fn, params, factor)
 
     factor = factor or default_texture_factor
+    if not is_finite(factor) or factor <= 0 then factor = default_texture_factor end
 
     width = math.floor(width * factor)
     height = math.floor(height * factor)
