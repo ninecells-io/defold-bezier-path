@@ -434,13 +434,14 @@ function M.create_texture(key, width, height, draw_fn, params, factor)
     height = math.floor(height * factor)
 
     local record = texture_cache.describe("texture", key, width, height, factor)
-    local texture_name = create_gui_texture(record.runtime_name, width, height, function()
+    local texture_name, created = create_gui_texture(record.runtime_name, width, height, function()
         local pixels = texture_cache.load(record)
         if pixels ~= nil then return pixels end
         pixels = M.draw_texture(width, height, draw_fn, factor, params)
         texture_cache.store(record, pixels)
         return pixels
     end)
+    if not created then texture_cache.touch(record) end
     return texture_name
 end
 
@@ -448,13 +449,14 @@ end
 function M.create_texture_region(key, bounds, draw_fn, params)
     local region = normalize_bounds(bounds)
     local record = texture_cache.describe("region", key, region.width, region.height, 1)
-    local texture_name = create_gui_texture(record.runtime_name, region.width, region.height, function()
+    local texture_name, created = create_gui_texture(record.runtime_name, region.width, region.height, function()
         local pixels = texture_cache.load(record)
         if pixels ~= nil then return pixels end
         pixels, region = M.draw_texture_region(region, draw_fn, params)
         texture_cache.store(record, pixels)
         return pixels
     end)
+    if not created then texture_cache.touch(record) end
     return texture_name, region
 end
 

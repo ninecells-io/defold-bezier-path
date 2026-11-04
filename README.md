@@ -59,6 +59,7 @@ bezierpath.configure_texture_cache({
     enabled = true,
     folder = "my-game-bezier-textures",
     version = sys.get_config_string("project.version", "dev") .. ":1",
+    max_size_bytes = 256 * 1024 * 1024, -- Optional platform-default override.
 })
 ```
 
@@ -66,6 +67,16 @@ bezierpath.configure_texture_cache({
 namespace. `version` belongs to the consumer; changing it removes the files
 tracked by the previous cache manifest and causes textures to be drawn again.
 `bezierpath.clear_texture_cache()` performs the same invalidation immediately.
+
+`max_size_bytes` limits the total size of tracked RGBA files, including their
+headers. It defaults to 256 MiB on iOS/Android and 512 MiB elsewhere. A value of
+zero prevents disk caching. Least recently used files are deleted before a new
+file is written; oversized textures render without being cached. Successful
+loads, stores, and same-scene GUI texture reuse refresh a persisted access order.
+Configuring a smaller limit immediately trims existing files. If an eviction
+fails, new writes are skipped until enough space can be reclaimed. The manifest
+itself is outside the texture byte budget. Upgrading from the old unbounded
+cache format clears its tracked files once.
 
 The first argument to `create_texture`, `create_texture_region`, and
 `add_gui_box` is a stable logical cache key. It must include every consumer
