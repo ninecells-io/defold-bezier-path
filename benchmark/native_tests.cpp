@@ -198,11 +198,46 @@ static void test_edge_cases_and_memory_bound() {
     delete_path(handle);
 }
 
+static void test_round_caps_follow_stroke_direction() {
+    const uint32_t handle = create_path();
+    // Horizontal, vertical, diagonal, and reversed strokes must all form capsules.
+    const float directions[][2] = {{1,0},{0,1},{1,1},{1,-1},{-1,0},{0,-1},{-1,-1},{-1,1}};
+    for (const auto& direction : directions) {
+        const float length = std::hypot(direction[0], direction[1]);
+        const float dx = direction[0] / length, dy = direction[1] / length;
+        const float ax = 32-dx*16, ay = 32-dy*16;
+        const float bx = 32+dx*16, by = 32+dy*16;
+        PathPointList* path = get_path_points(handle);
+        path->points.clear();
+        path->points.push_back(linear(ax,ay));
+        path->points.push_back(linear(bx,by));
+        path->is_closed = false;
+        invalidate_path(path);
+        std::vector<uint8_t> pixels;
+        BufferInfo info = make_buffer(pixels,64,64,4,handle);
+        stroke_path(info,12,CENTER,255,255,255,255,CAP_ROUND,JOIN_ROUND);
+        for (int y=0; y<64; ++y) {
+            for (int x=0; x<64; ++x) {
+                const float px = x+0.5f, py = 64-(y+0.5f);
+                const float along = std::max(0.0f,std::min(32.0f,(px-ax)*dx+(py-ay)*dy));
+                const float distance = std::hypot(px-(ax+along*dx),py-(ay+along*dy));
+                const uint8_t alpha = pixels[((size_t)y*64+x)*4+3];
+                // Leave the antialiased boundary unconstrained; test solid interiors
+                // and exteriors against the analytic capsule, including both caps.
+                if (distance < 5.0f) assert(alpha == 255);
+                if (distance > 7.0f) assert(alpha == 0);
+            }
+        }
+    }
+    delete_path(handle);
+}
+
 int main() {
     test_stable_handles_and_lifecycle();
     test_cache_invalidation();
     test_cropped_render_matches_full_canvas();
     test_edge_cases_and_memory_bound();
+    test_round_caps_follow_stroke_direction();
     clear_all_paths();
     std::puts("native raster tests passed");
     return 0;

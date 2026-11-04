@@ -17,7 +17,8 @@ static void draw_circle_cap(
     arc_points.reserve((size_t)segments + 2);
     arc_points.push_back(std::make_pair(cx, cy));
     for (int i = 0; i <= segments; ++i) {
-        const float angle = -M_TAU + (M_PI * i / segments);
+        // dx/dy points outward from the endpoint; center the semicircle on it.
+        const float angle = -M_PI * 0.5f + (M_PI * i / segments);
         const float rx = cosf(angle);
         const float ry = sinf(angle);
         const float x = rx * dx + ry * nx;
