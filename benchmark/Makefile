@@ -2,6 +2,7 @@ CXX ?= clang++
 CXXFLAGS ?= -O2 -std=c++11
 OUTPUT ?= /tmp/bezierpath-native-benchmark
 TEST_OUTPUT ?= /tmp/bezierpath-native-tests
+BUFFER_TEST_OUTPUT ?= /tmp/bezierpath-buffer-tests
 LEGACY_OUTPUT ?= /tmp/bezierpath-native-benchmark-legacy
 LEGACY_LIBRARY ?= ../build/arm64-osx/libBezierPath_6.a
 LUA ?= luajit
@@ -31,6 +32,8 @@ run:
 test:
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEST_SOURCES) -o $(TEST_OUTPUT)
 	$(TEST_OUTPUT)
+	$(CXX) $(CXXFLAGS) -DBEZIERPATH_BUFFER_TEST $(INCLUDES) buffer_validation_tests.cpp $(ROOT)/bezierpath/src/buffer.cpp -o $(BUFFER_TEST_OUTPUT)
+	$(BUFFER_TEST_OUTPUT)
 
 lua-test:
 	$(LUA) lua_api_test.lua

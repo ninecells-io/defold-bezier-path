@@ -14,5 +14,6 @@ bezierpath.zip
 /.local-build/
 /.env
 
-/manifest.private.der
-/manifest.public.der
+# Signing keys belong outside the repository, including nested demo projects.
+manifest.private.der
+manifest.public.der

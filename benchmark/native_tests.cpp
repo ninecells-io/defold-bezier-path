@@ -3,10 +3,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 #include <dmsdk/sdk.h>
 #include "buffer.h"
+#include "buffer_validation.h"
 #include "fill.h"
 #include "shadow.h"
 #include "stroke.h"
@@ -355,7 +357,28 @@ static void test_repeated_endpoints_preserve_joins_and_caps() {
     delete_path(handle);
 }
 
+static void test_buffer_layout_validation() {
+    assert(!validate_buffer_layout(2, 3, 3, 18));
+    assert(!validate_buffer_layout(2, 3, 4, 24));
+    assert(!validate_buffer_layout(2, 3, 4, 32)); // Larger backing buffers are safe.
+    assert(validate_buffer_layout(2, 3, 4, 23));
+    assert(validate_buffer_layout(1, 1, 3, 0));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (double invalid : {0.0, -1.0, 1.5, nan, inf, -inf, double(INT_MAX) + 1}) {
+        assert(validate_buffer_layout(invalid, 1, 4, UINT32_MAX));
+        assert(validate_buffer_layout(1, invalid, 4, UINT32_MAX));
+    }
+    for (double invalid : {0.0, -1.0, 1.0, 2.0, 3.5, 5.0, nan, inf})
+        assert(validate_buffer_layout(1, 1, invalid, UINT32_MAX));
+    assert(validate_buffer_layout(INT_MAX, INT_MAX, 4, UINT32_MAX));
+    assert(validate_buffer_layout(32768, 32768, 4, UINT32_MAX)); // 32-bit wrap.
+    assert(validate_buffer_layout(32768, 16384, 4, UINT32_MAX)); // Signed offset overflow.
+    assert(!validate_buffer_layout(INT_MAX / 4, 1, 4, UINT32_MAX));
+}
+
 int main() {
+    test_buffer_layout_validation();
     test_curved_strokes_have_no_join_gaps();
     test_repeated_endpoints_preserve_joins_and_caps();
     test_closed_miter_join_fills_outer_corner();

@@ -77,7 +77,7 @@ local b = {
 }
 ```
 
-Use positive integer dimensions and a matching byte buffer. RGB (`channels=3`) is supported for low-level color rendering; alpha masks require RGBA. The optional origin maps cropped pixels into the coordinate system of the original path. The raw Defold buffer remains owned by Lua; GUI textures contain uploaded pixel data.
+Use positive integer dimensions and a matching byte buffer. Dimensions and channels must be numeric values; fractional, nonfinite, and out-of-range values are rejected. Channels must be 3 or 4, the backing buffer must contain at least `width * height * channels` bytes, and that product must fit a signed 32-bit byte offset. RGB (`channels=3`) is supported for low-level color rendering; alpha masks require RGBA. The optional origin maps cropped pixels into the coordinate system of the original path. The raw Defold buffer remains owned by Lua; GUI textures contain uploaded pixel data.
 
 ## Lua wrapper API
 

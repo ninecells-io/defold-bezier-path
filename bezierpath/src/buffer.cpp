@@ -6,6 +6,7 @@
 #include <string>
 #include <stack>
 #include "buffer.h"
+#include "buffer_validation.h"
 
 BufferInfo read_and_validate_buffer_info(lua_State *L, int index)
 {
@@ -32,23 +33,18 @@ BufferInfo read_and_validate_buffer_info(lua_State *L, int index)
         luaL_error(L, "Buffer is invalid");
     }
 
-    buffer_info.width = lua_tointeger(L, -5);
-    if (buffer_info.width == 0)
-    {
-        luaL_error(L, "'width' of the buffer should be an integer and > 0");
-    }
-
-    buffer_info.height = lua_tointeger(L, -4);
-    if (buffer_info.height == 0)
-    {
-        luaL_error(L, "'height' of the buffer should be an integer and > 0");
-    }
-
-    buffer_info.channels = lua_tointeger(L, -3);
-    if (buffer_info.channels == 0)
-    {
-        luaL_error(L, "'channels' of should be an integer and 3 or 4");
-    }
+    luaL_checktype(L, -5, LUA_TNUMBER);
+    luaL_checktype(L, -4, LUA_TNUMBER);
+    luaL_checktype(L, -3, LUA_TNUMBER);
+    const double width = lua_tonumber(L, -5);
+    const double height = lua_tonumber(L, -4);
+    const double channels = lua_tonumber(L, -3);
+    const char* layout_error = validate_buffer_layout(width, height, channels, buffer_info.src_size);
+    if (layout_error)
+        luaL_error(L, "%s", layout_error);
+    buffer_info.width = static_cast<int>(width);
+    buffer_info.height = static_cast<int>(height);
+    buffer_info.channels = static_cast<int>(channels);
 
     if (lua_isboolean(L, -2) == 1)
     {
