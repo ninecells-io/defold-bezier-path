@@ -30,9 +30,10 @@ static inline void blend_color(
     if (channels == 4) {
         const float src_a = a / 255.0f;
         const float inv_a = 1.0f - src_a;
-        dst[idx + 0] = (uint8_t)(sr * src_a + dst[idx + 0] * inv_a);
-        dst[idx + 1] = (uint8_t)(sg * src_a + dst[idx + 1] * inv_a);
-        dst[idx + 2] = (uint8_t)(sb * src_a + dst[idx + 2] * inv_a);
+        const float source_weight = premul ? 1.0f : src_a;
+        dst[idx + 0] = (uint8_t)(sr * source_weight + dst[idx + 0] * inv_a);
+        dst[idx + 1] = (uint8_t)(sg * source_weight + dst[idx + 1] * inv_a);
+        dst[idx + 2] = (uint8_t)(sb * source_weight + dst[idx + 2] * inv_a);
         dst[idx + 3] = (uint8_t)(a + dst[idx + 3] * inv_a);
     } else if (channels == 3) {
         dst[idx + 0] = sr;
@@ -287,7 +288,7 @@ void mask_path(
     if (!mask) return;
 
     uint8_t* dst = buffer_info.bytes;
-    const uint8_t target_alpha = 2;
+    const uint8_t target_alpha = 0;
     const auto apply_mask = [&](int x, int y, float weight) {
         if (weight <= 0.0f) return;
         const int idx = (y * buffer_info.width + x) * 4;

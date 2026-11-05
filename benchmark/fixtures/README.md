@@ -5,7 +5,9 @@ previous ARM64 `-O2` static library. The comparison set exercises rectangle and
 arc fills, linear and shape gradients, outer shadow, open and closed strokes,
 and glow.
 
-The optimized release comparison is:
+This historical comparison predates the premultiplied-alpha, fully transparent mask, and stroke-join correctness fixes. It is a performance-era reference, not a pixel-equivalence claim for the current renderer.
+
+The recorded optimized release comparison was:
 
 | Fixture | Changed channels | Max delta | RMSE |
 |---|---:|---:|---:|

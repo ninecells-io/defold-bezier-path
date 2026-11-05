@@ -20,6 +20,14 @@ static PathPoint linear(float x, float y) {
     return point;
 }
 
+static PathPoint quadratic(float x, float y, float cx, float cy) {
+    PathPoint point = linear(x, y);
+    point.type = POINT_TYPE_QUAD_CURVE;
+    point.cx = cx;
+    point.cy = cy;
+    return point;
+}
+
 static void set_rect(uint32_t handle, float x0, float y0, float x1, float y1) {
     PathPointList* path = get_path_points(handle);
     assert(path);
@@ -177,12 +185,12 @@ static void test_edge_cases_and_memory_bound() {
 
     fill_color(buffer_info, 100, 110, 120, 255);
     mask_path(buffer_info, false);
-    assert(pixels[((size_t)32 * 64 + 32) * 4 + 3] == 2);
+    assert(pixels[((size_t)32 * 64 + 32) * 4 + 3] == 0);
     assert(pixels[3] == 255);
     fill_color(buffer_info, 100, 110, 120, 255);
     mask_path(buffer_info, true);
     assert(pixels[((size_t)32 * 64 + 32) * 4 + 3] == 255);
-    assert(pixels[3] == 2);
+    assert(pixels[3] == 0);
 
     std::vector<uint8_t> large;
     BufferInfo large_info = make_buffer(large, 512, 512, 4, handle);
@@ -232,7 +240,126 @@ static void test_round_caps_follow_stroke_direction() {
     delete_path(handle);
 }
 
+
+// Transparent high-level textures use premultiplied source-over blending.
+static void test_premultiplied_pixels_and_masks() {
+    clear_all_paths();
+    const uint32_t handle = create_path();
+    std::vector<uint8_t> pixels;
+    BufferInfo info = make_buffer(pixels, 8, 8, 4, handle);
+    info.premultiply_alpha = true;
+    set_rect(handle, 0, 0, 8, 8);
+    fill_path(info, 255, 0, 0, 128);
+    const int center = (4 * 8 + 4) * 4;
+    assert(pixels[center] == 128 && pixels[center + 3] == 128);
+    fill_path_gradient(info, 0, 255, 0, 128, 0, 255, 0, 128, 0);
+    assert(pixels[center] >= 63 && pixels[center] <= 64);
+    assert(pixels[center + 1] >= 127 && pixels[center + 1] <= 128);
+    assert(pixels[center + 3] >= 190 && pixels[center + 3] <= 192);
+
+    std::fill(pixels.begin(), pixels.end(), 0);
+    fill_shadow(info, 0, 0, 0, 255, 0, 0, 128, false);
+    assert(pixels[center] == 128 && pixels[center + 3] == 128);
+
+    std::fill(pixels.begin(), pixels.end(), 0);
+    stroke_path(info, 4, CENTER, 255, 0, 0, 128, CAP_BUTT, JOIN_MITER);
+    bool full_stroke_pixel = false;
+    for (size_t i = 0; i < pixels.size(); i += 4) {
+        if (pixels[i + 3] == 128) { assert(pixels[i] == 128); full_stroke_pixel = true; }
+    }
+    assert(full_stroke_pixel);
+
+    set_rect(handle, 2, 2, 6, 6);
+    fill_color(info, 255, 0, 0, 255);
+    mask_path(info, false);
+    assert(pixels[center] == 0 && pixels[center + 3] == 0);
+    assert(pixels[0] == 255 && pixels[3] == 255);
+    fill_color(info, 255, 0, 0, 255);
+    mask_path(info, true);
+    assert(pixels[center] == 255 && pixels[center + 3] == 255);
+    assert(pixels[0] == 0 && pixels[3] == 0);
+    clear_all_paths();
+}
+
+
+static void test_closed_miter_join_fills_outer_corner() {
+    clear_all_paths();
+    uint32_t handle = create_path();
+    std::vector<uint8_t> pixels;
+    BufferInfo info = make_buffer(pixels, 32, 32, 4, handle);
+    set_rect(handle, 8, 8, 24, 24);
+    stroke_path(info, 8, CENTER, 255, 255, 255, 255, CAP_BUTT, JOIN_MITER);
+    // Both adjacent segment quads miss this pixel; the miter must fill it.
+    assert(pixels[((size_t)26 * 32 + 5) * 4 + 3] == 255);
+    clear_all_paths();
+}
+
+static void test_curved_strokes_have_no_join_gaps() {
+    const uint32_t handle = create_path();
+    PathPointList* path = get_path_points(handle);
+    // The gallery's rounded rectangle, including curve-to-line transitions.
+    path->points = {
+        linear(180, 40), quadratic(220, 80, 220, 40),
+        linear(220, 140), quadratic(180, 180, 220, 180),
+        linear(80, 180), quadratic(40, 140, 40, 180),
+        linear(40, 80), quadratic(80, 40, 40, 40)
+    };
+    path->is_closed = true;
+    invalidate_path(path);
+    const std::vector<std::pair<float, float> >* points = nullptr;
+    assert(get_flattened_path(path, points));
+    const SegmentIndex* segments = get_segment_index(path, true);
+    for (int position = CENTER; position <= OUTSIDE; ++position) {
+        std::vector<uint8_t> pixels;
+        BufferInfo info = make_buffer(pixels, 260, 220, 4, handle);
+        stroke_path(info, 26, position, 143, 232, 167, 191, CAP_BUTT, JOIN_ROUND);
+        for (int y = 0; y < info.height; ++y) {
+            for (int x = 0; x < info.width; ++x) {
+                const float px = x + 0.5f, py = info.height - y - 0.5f;
+                const float distance = std::sqrt(segments->nearest_distance_squared(px, py));
+                const bool inside = point_in_polygon(px, py, *points);
+                // Test solid stroke interiors while allowing antialiasing at both edges.
+                const bool solid = position == CENTER ? distance < 12.0f :
+                    (inside == (position == INSIDE) && distance > 1.0f && distance < 25.0f);
+                if (solid && pixels[((size_t)y * info.width + x) * 4 + 3] != 191) {
+                    std::fprintf(stderr, "gap position=%d x=%d y=%d distance=%f alpha=%d\n", position, x, y, distance,
+                        pixels[((size_t)y * info.width + x) * 4 + 3]);
+                    assert(false);
+                }
+            }
+        }
+    }
+    delete_path(handle);
+}
+
+static void test_repeated_endpoints_preserve_joins_and_caps() {
+    const uint32_t handle = create_path();
+    PathPointList* path = get_path_points(handle);
+    for (bool closed : {false, true}) {
+        for (int join = JOIN_MITER; join <= JOIN_BEVEL; ++join) {
+            std::vector<uint8_t> expected, actual;
+            path->points = {linear(12, 12), linear(48, 12), linear(48, 48)};
+            path->is_closed = closed;
+            invalidate_path(path);
+            BufferInfo info = make_buffer(expected, 64, 64, 4, handle);
+            stroke_path(info, 12, CENTER, 143, 232, 167, 191, CAP_ROUND, join);
+            path->points = {linear(12, 12), linear(12, 12), linear(48, 12),
+                linear(48, 12), linear(48, 48), linear(48, 48)};
+            if (closed) path->points.push_back(linear(12, 12));
+            invalidate_path(path);
+            info = make_buffer(actual, 64, 64, 4, handle);
+            stroke_path(info, 12, CENTER, 143, 232, 167, 191, CAP_ROUND, join);
+            assert(expected == actual);
+        }
+    }
+    delete_path(handle);
+}
+
 int main() {
+    test_curved_strokes_have_no_join_gaps();
+    test_repeated_endpoints_preserve_joins_and_caps();
+    test_closed_miter_join_fills_outer_corner();
+    test_premultiplied_pixels_and_masks();
     test_stable_handles_and_lifecycle();
     test_cache_invalidation();
     test_cropped_render_matches_full_canvas();

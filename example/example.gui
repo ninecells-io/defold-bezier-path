@@ -1,3 +1,6 @@
 script: "/example/example.gui_script"
+fonts { name: "default" font: "/builtins/fonts/default.font" }
 material: "/builtins/materials/gui.material"
 adjust_reference: ADJUST_REFERENCE_PARENT
+max_nodes: 256
+max_dynamic_textures: 32

@@ -1,0 +1,244 @@
+# Native global API. The recommended Lua wrapper is require("bezierpath.bezierpath").
+- name: bezierpath
+  type: table
+  desc: Native raster API; RGB 0-255, alpha 0-1. See README for the Lua wrapper.
+  members:
+  - name: fill_color
+    type: function
+    desc: "Replace every pixel with the given color."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+  - name: create_path
+    type: function
+    desc: "Return a new native path handle."
+    returns:
+    - type: number
+      desc: Path handle
+  - name: delete_path
+    type: function
+    desc: "Release a path handle."
+    parameters:
+    - name: handle
+      type: number
+  - name: get_path_bounds
+    type: function
+    desc: "Return {x,y,width,height}, or nil for an empty path; padding defaults to zero."
+    parameters:
+    - name: handle
+      type: number
+    - name: padding
+      type: number
+      optional: true
+    returns:
+    - type: table
+      desc: Bounds or nil for an empty path
+  - name: clear_all_paths
+    type: function
+    desc: "Release all native paths; only call when no owner retains handles."
+  - name: reset_path
+    type: function
+    desc: "Clear points and mark the path open."
+    parameters:
+    - name: handle
+      type: number
+  - name: add_point
+    type: function
+    desc: "Append a straight segment endpoint."
+    parameters:
+    - name: handle
+      type: number
+    - name: x
+      type: number
+    - name: y
+      type: number
+  - name: add_quad_curve_point
+    type: function
+    desc: "Append a quadratic endpoint and control point."
+    parameters:
+    - name: handle
+      type: number
+    - name: x
+      type: number
+    - name: y
+      type: number
+    - name: cx
+      type: number
+    - name: cy
+      type: number
+  - name: add_arc_point
+    type: function
+    desc: "Append a circular arc; angles are radians and clockwise decreases angles."
+    parameters:
+    - name: handle
+      type: number
+    - name: center_x
+      type: number
+    - name: center_y
+      type: number
+    - name: radius
+      type: number
+    - name: start_angle
+      type: number
+    - name: end_angle
+      type: number
+    - name: clockwise
+      type: boolean
+  - name: set_path_closed
+    type: function
+    desc: "Set whether the contour is closed."
+    parameters:
+    - name: handle
+      type: number
+    - name: closed
+      type: boolean
+  - name: init_buffer
+    type: function
+    desc: "Zero the complete buffer."
+    parameters:
+    - name: buffer_info
+      type: table
+  - name: fill_path
+    type: function
+    desc: "Fill the selected path."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+  - name: fill_path_gradient
+    type: function
+    desc: "Fill a linear gradient; angle is in degrees."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: red1
+      type: number
+    - name: green1
+      type: number
+    - name: blue1
+      type: number
+    - name: alpha1
+      type: number
+    - name: red2
+      type: number
+    - name: green2
+      type: number
+    - name: blue2
+      type: number
+    - name: alpha2
+      type: number
+    - name: angle
+      type: number
+  - name: fill_path_gradient_shape
+    type: function
+    desc: "Fill a gradient from the contour toward the interior."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: red1
+      type: number
+    - name: green1
+      type: number
+    - name: blue1
+      type: number
+    - name: alpha1
+      type: number
+    - name: red2
+      type: number
+    - name: green2
+      type: number
+    - name: blue2
+      type: number
+    - name: alpha2
+      type: number
+  - name: fill_shadow
+    type: function
+    desc: "Composite an inner or outer blurred shadow."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: offset_x
+      type: number
+    - name: offset_y
+      type: number
+    - name: radius
+      type: number
+    - name: inner
+      type: boolean
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+  - name: mask_path
+    type: function
+    desc: "Clear alpha inside the path; inverted=true clears the exterior."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: inverted
+      type: boolean
+  - name: stroke_path
+    type: function
+    desc: "Stroke a path; defaults are center, butt, miter."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: width
+      type: number
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+    - name: position
+      type: string
+      optional: true
+    - name: cap_style
+      type: string
+      optional: true
+    - name: join_style
+      type: string
+      optional: true
+  - name: stroke_path_glow
+    type: function
+    desc: "Draw a blurred stroke; position defaults to center."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: width
+      type: number
+    - name: radius
+      type: number
+    - name: position
+      type: string
+      optional: true
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number

@@ -1,0 +1,6 @@
+/.local-build
+/scripts
+/benchmark
+/tests
+/docs
+/release

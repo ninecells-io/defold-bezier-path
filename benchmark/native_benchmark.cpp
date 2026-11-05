@@ -193,7 +193,7 @@ static PrimitiveTimings run_primitives(int size) {
     return timings;
 }
 
-static double run_classic_board() {
+static double run_grid_workload() {
     const int size = 512;
     std::vector<uint8_t> pixels((size_t)size * size * 4);
     BufferInfo buffer_info = {};
@@ -234,7 +234,7 @@ static double run_classic_board() {
         clear();
         stroke_path(buffer_info, 1, 0, 255, 255, 255, 84, 1, 1);
     });
-    std::printf("Classic representative total: %.3f ms\n", total);
+    std::printf("Grid representative total: %.3f ms\n", total);
     return total;
 }
 
@@ -242,7 +242,7 @@ int main() {
     const PrimitiveTimings small = run_primitives(64);
     run_primitives(256);
     const PrimitiveTimings large = run_primitives(512);
-    const double classic = run_classic_board();
+    const double grid = run_grid_workload();
 
 #ifdef LEGACY_RASTER
     return 0;
@@ -273,7 +273,7 @@ int main() {
     require_at_most("512 shape circle", large.shape_circle, 978.956 / 5.0);
     require_at_most("512 shadow circle", large.shadow_circle, 136.473 / 5.0);
     require_at_most("512 glow circle", large.glow_circle, 934.129 / 5.0);
-    require_at_most("Classic representative", classic, 31.0);
+    require_at_most("Grid representative", grid, 31.0);
     return passed ? 0 : 1;
 #endif
 }

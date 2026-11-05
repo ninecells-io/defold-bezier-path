@@ -19,7 +19,7 @@ The scoped-path and cropped-texture Lua helpers have a standalone LuaJIT test:
 make -C benchmark lua-test LUA=/path/to/luajit
 ```
 
-The executable is written to `/private/tmp`. Timings include raster masks,
+The executable is written to `/tmp`. Timings include raster masks,
 temporary allocations, compositing, and blur, but exclude Lua, Defold buffer
 copies, and GPU texture uploads.
 
@@ -29,7 +29,7 @@ baseline with `make -C benchmark legacy LEGACY_LIBRARY=/path/to/library.a`.
 On the same ARM64 machine used for the original baseline, the acceptance gates
 are:
 
-- Classic workload: no more than 31 ms (baseline 156 ms).
+- Grid workload: no more than 31 ms (baseline 156 ms).
 - Every 512-pixel circle operation: at least 5x faster than its baseline.
 - Shared raster scratch at 512x512: no more than 4 MiB.
 - 64-pixel controls: no regression greater than 10% from the recorded

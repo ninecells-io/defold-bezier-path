@@ -1,63 +1,32 @@
 SHELL := /bin/bash
-
 PYTHON ?= python3
-DEFOLD_CONTROLS_ROOT ?= $(abspath ../defold-controls)
-DEFOLD_SUDOKU_PLAYBOARD_ROOT ?= $(abspath ../defold-sudoku-playboard)
-DEFOLD_HELPERS_ROOT ?= $(abspath ../defold-helpers)
-ONE_SUDOKU_ROOT ?= $(abspath ../one-sudoku)
-CONSUMERS ?= defold-controls defold-sudoku-playboard one-sudoku
-PRODUCTION_PLATFORM ?= arm64-macos
-PRODUCTION_VARIANT ?= release
+LUA ?= luajit
+PLATFORM ?= arm64-macos
+BUILD_SERVER ?= https://build.defold.com
+export PLATFORM BUILD_SERVER
 
-export DEFOLD_CONTROLS_ROOT
-export DEFOLD_SUDOKU_PLAYBOARD_ROOT
-export DEFOLD_HELPERS_ROOT
-export ONE_SUDOKU_ROOT
-export CONSUMERS
-export PRODUCTION_PLATFORM
-export PRODUCTION_VARIANT
-
-.PHONY: setup-bob setup-local-extender setup-check extender-start extender-stop extender-status \
-	test stage-consumers stage-app dev-build watch production-build clean-local-build
-
-setup-bob:
-	./scripts/ensure_bob.sh
-
-setup-local-extender:
-	./scripts/setup_local_extender.sh
-
-setup-check:
-	./scripts/setup_local_extender.sh --check-only
-
-extender-start:
-	./scripts/extender.sh start
-
-extender-stop:
-	./scripts/extender.sh stop
-
-extender-status:
-	./scripts/extender.sh status
+.PHONY: test build bundle setup-bob setup-check setup-local-extender extender-start extender-stop extender-status
 
 test:
 	$(MAKE) -C benchmark test
-	PYTHONPYCACHEPREFIX=/private/tmp/bezierpath-pycache $(PYTHON) -m unittest discover -s scripts/tests -v
+	$(MAKE) -C benchmark lua-test LUA="$(LUA)"
+	$(LUA) tests/bezierpath_texture_api_test.lua
+	$(LUA) tests/texture_cache_test.lua
+	PYTHONPYCACHEPREFIX=/tmp/bezierpath-pycache $(PYTHON) -m unittest discover -s scripts/tests -v
 
-stage-consumers:
-	$(PYTHON) scripts/stage_consumers.py $(CONSUMERS)
-
-stage-app:
-	$(PYTHON) scripts/stage_consumers.py one-sudoku
-
-dev-build: test
-	./scripts/dev_build.sh
-
-watch:
-	./scripts/extender.sh ensure
-	$(PYTHON) scripts/watch.py
-
-production-build: test setup-bob
-	./scripts/production_build.sh
-
-clean-local-build:
-	@echo "Refusing to remove .local-build automatically because it contains the packaged Xcode SDK."
-	@echo "Remove $(CURDIR)/.local-build manually if you intend to reprovision it."
+setup-bob:
+	./scripts/ensure_bob.sh
+build:
+	./scripts/build_demo.sh
+bundle:
+	./scripts/build_demo.sh bundle
+setup-check:
+	./scripts/setup_local_extender.sh --check-only
+setup-local-extender:
+	./scripts/setup_local_extender.sh
+extender-start:
+	./scripts/extender.sh start
+extender-stop:
+	./scripts/extender.sh stop
+extender-status:
+	./scripts/extender.sh status

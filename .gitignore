@@ -13,3 +13,6 @@ builtins
 bezierpath.zip
 /.local-build/
 /.env
+
+/manifest.private.der
+/manifest.public.der

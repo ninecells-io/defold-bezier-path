@@ -68,6 +68,8 @@ static void draw_round_join(
     const BufferInfo& buffer_info,
     const std::pair<float, float>& center,
     float radius, float a0, float a1,
+    const std::pair<float, float>& a,
+    const std::pair<float, float>& b,
     SampleMask& mask,
     int segments = 16
 ) {
@@ -78,7 +80,10 @@ static void draw_round_join(
     if (sweep > M_PI) sweep -= M_TAU;
     if (sweep < -M_PI) sweep += M_TAU;
     const int steps = std::max(segments, 4);
-    for (int i = 0; i <= steps; ++i) {
+    // Reuse the segment endpoints exactly; reconstructing them with sin/cos
+    // can leave subpixel cracks where the sector meets a segment quad.
+    points.push_back(a);
+    for (int i = 1; i < steps; ++i) {
         const float t = (float)i / steps;
         const float angle = a0 + sweep * t;
         points.push_back(std::make_pair(
@@ -86,6 +91,7 @@ static void draw_round_join(
             center.second + sinf(angle) * radius
         ));
     }
+    points.push_back(b);
     rasterize_polygon_to_sample_mask(buffer_info, points, mask);
 }
 
@@ -139,10 +145,27 @@ static void draw_join_at_vertex(
         a1 = std::atan2(-n1y, -n1x);
     }
 
-    if (join_style == JOIN_BEVEL) {
+    if (join_style == JOIN_MITER) {
+        const float denominator = 1.0f + d0x * d1x + d0y * d1y;
+        if (denominator > 1e-6f) {
+            const float mx = ((a.first - p1.first) + (b.first - p1.first)) / denominator;
+            const float my = ((a.second - p1.second) + (b.second - p1.second)) / denominator;
+            // Limit sharp-corner spikes to four times the outer stroke offset.
+            if (mx * mx + my * my <= 16.0f * radius * radius) {
+                std::vector<std::pair<float, float> > join;
+                join.push_back(p1);
+                join.push_back(a);
+                join.push_back(std::make_pair(p1.first + mx, p1.second + my));
+                join.push_back(b);
+                rasterize_polygon_to_sample_mask(buffer_info, join, mask);
+                return;
+            }
+        }
+        draw_bevel_join(buffer_info, p1, a, b, mask);
+    } else if (join_style == JOIN_BEVEL) {
         draw_bevel_join(buffer_info, p1, a, b, mask);
     } else if (join_style == JOIN_ROUND) {
-        draw_round_join(buffer_info, p1, radius, a0, a1, mask);
+        draw_round_join(buffer_info, p1, radius, a0, a1, a, b, mask);
     }
 }
 
@@ -171,9 +194,10 @@ static inline void blend_stroke_pixel(
     if (buffer_info.channels == 4) {
         const float src_a = sa / 255.0f;
         const float inv_a = 1.0f - src_a;
-        dst[idx + 0] = (uint8_t)(sr * src_a + dst[idx + 0] * inv_a);
-        dst[idx + 1] = (uint8_t)(sg * src_a + dst[idx + 1] * inv_a);
-        dst[idx + 2] = (uint8_t)(sb * src_a + dst[idx + 2] * inv_a);
+        const float source_weight = buffer_info.premultiply_alpha ? 1.0f : src_a;
+        dst[idx + 0] = (uint8_t)(sr * source_weight + dst[idx + 0] * inv_a);
+        dst[idx + 1] = (uint8_t)(sg * source_weight + dst[idx + 1] * inv_a);
+        dst[idx + 2] = (uint8_t)(sb * source_weight + dst[idx + 2] * inv_a);
         dst[idx + 3] = (uint8_t)(sa + dst[idx + 3] * inv_a);
     } else if (buffer_info.channels == 3) {
         dst[idx + 0] = sr;
@@ -209,7 +233,7 @@ void stroke_path(
     }
 
     SampleMask& mask = get_raster_scratch().mask;
-    initialize_sample_mask(buffer_info, min_x, min_y, max_x, max_y, width + 1.0f, mask);
+    initialize_sample_mask(buffer_info, min_x, min_y, max_x, max_y, (join_style == JOIN_MITER ? 4.0f : 1.0f) * width + 1.0f, mask);
     if (mask.empty()) return;
 
     const float half_w = width * 0.5f;
@@ -253,11 +277,11 @@ void stroke_path(
             }
         }
 
-        if (join_style != JOIN_MITER && i + 2 < flat_path.size() &&
-            (corner_flags.empty() || corner_flags[i + 1])) {
+        if (i + 2 < flat_path.size()) {
             draw_join_at_vertex(
                 buffer_info, p0, p1, flat_path[i + 2],
-                offset_in, offset_out, join_style, mask
+                offset_in, offset_out,
+                (corner_flags.empty() || corner_flags[i + 1]) ? join_style : JOIN_ROUND, mask
             );
         }
     }
@@ -281,18 +305,20 @@ void stroke_path(
             rasterize_polygon_to_sample_mask(buffer_info, quad, mask);
         }
 
-        if (join_style != JOIN_MITER && flat_path.size() >= 3) {
+        if (flat_path.size() >= 3) {
             const size_t last = flat_path.size() - 1;
-            if (corner_flags.empty() || corner_flags[last]) {
+            {
                 draw_join_at_vertex(
                     buffer_info, flat_path[last - 1], flat_path[last], flat_path[0],
-                    offset_in, offset_out, join_style, mask
+                    offset_in, offset_out,
+                    (corner_flags.empty() || corner_flags[last]) ? join_style : JOIN_ROUND, mask
                 );
             }
-            if (corner_flags.empty() || corner_flags[0]) {
+            {
                 draw_join_at_vertex(
                     buffer_info, flat_path[last], flat_path[0], flat_path[1],
-                    offset_in, offset_out, join_style, mask
+                    offset_in, offset_out,
+                    (corner_flags.empty() || corner_flags[0]) ? join_style : JOIN_ROUND, mask
                 );
             }
         }

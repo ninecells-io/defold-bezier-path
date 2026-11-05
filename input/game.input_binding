@@ -2,3 +2,10 @@ mouse_trigger {
   input: MOUSE_BUTTON_LEFT
   action: "touch"
 }
+key_trigger { input: KEY_1 action: "page1" }
+key_trigger { input: KEY_2 action: "page2" }
+key_trigger { input: KEY_3 action: "page3" }
+key_trigger { input: KEY_4 action: "page4" }
+key_trigger { input: KEY_5 action: "page5" }
+key_trigger { input: KEY_6 action: "page6" }
+key_trigger { input: KEY_7 action: "page7" }

@@ -1,3 +1,5 @@
+package.path = "../?.lua;" .. package.path
+
 package.preload["helpers.color_helper"] = function()
     return {
         black = function(alpha)
@@ -37,6 +39,7 @@ local native = {
 _G.bezierpath = native
 
 _G.hash = function(value) return value end
+_G.hash_to_hex = function(value) return value end
 _G.image = { TYPE_RGB = 1, TYPE_RGBA = 2 }
 _G.buffer = {
     VALUE_TYPE_UINT8 = 1,
@@ -98,7 +101,7 @@ local texture, texture_region = api.create_texture_region(
     { x = 3.2, y = 4.2, width = 7.2, height = 8.2 },
     function() end
 )
-assert(texture == "cropped")
+assert(type(texture) == "string" and texture:match("^bezierpath_"))
 assert(texture_region.x == 3 and texture_region.y == 4)
 assert(texture_region.width == 8 and texture_region.height == 9)
 assert(texture_calls[#texture_calls].width == 8 and texture_calls[#texture_calls].height == 9)

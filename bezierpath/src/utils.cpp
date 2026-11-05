@@ -102,7 +102,7 @@ void flatten_arc(
 ) {
     if (radius <= 0.0f) return;
 
-    // UIKit semantics: clockwise => decreasing angles
+    // Arc direction: clockwise => decreasing angles
     float sweep = end_angle - start_angle;
     if (clockwise) { while (sweep > 0.0f) sweep -= M_TAU; }
     else           { while (sweep < 0.0f) sweep += M_TAU; }
@@ -200,6 +200,32 @@ bool get_flattened_path(
     if (!path->flattened_valid) {
         flatten_path(path->points, path->flattened_points, 0.25f, 10, &path->flattened_corner_flags);
         if (path->flattened_points.empty()) return false;
+
+        // Curves emit their endpoint, and the following segment emits it again.
+        // Keep one vertex so stroke joins/caps see the adjacent nonzero segments.
+        // The tolerance also absorbs trigonometric roundoff at arc endpoints.
+        std::vector<std::pair<float, float> >& flat = path->flattened_points;
+        std::vector<uint8_t>& flags = path->flattened_corner_flags;
+        const auto same_vertex = [](const std::pair<float, float>& a,
+                                    const std::pair<float, float>& b) {
+            return std::hypot(a.first - b.first, a.second - b.second) <= 1e-4f;
+        };
+        size_t count = 0;
+        for (size_t i = 0; i < flat.size(); ++i) {
+            if (count > 0 && same_vertex(flat[count - 1], flat[i])) {
+                flags[count - 1] |= flags[i];
+            } else {
+                flat[count] = flat[i];
+                flags[count] = flags[i];
+                ++count;
+            }
+        }
+        if (path->is_closed && count > 1 && same_vertex(flat[0], flat[count - 1])) {
+            flags[0] |= flags[count - 1];
+            --count;
+        }
+        flat.resize(count);
+        flags.resize(count);
 
         path->min_x = path->max_x = path->flattened_points[0].first;
         path->min_y = path->max_y = path->flattened_points[0].second;
@@ -334,8 +360,17 @@ void rasterize_polygon_to_sample_mask(
                 const float xj = poly[j].first;
                 const float yj = poly[j].second;
                 if ((yi > fy) != (yj > fy)) {
+                    // Evaluate shared edges in the same direction regardless
+                    // of polygon winding, including floating-point rounding.
+                    const float low_x = yi < yj ? xi : xj;
+                    const float low_y = yi < yj ? yi : yj;
+                    const float high_x = yi < yj ? xj : xi;
+                    const float high_y = yi < yj ? yj : yi;
                     intersections.push_back(
-                        (xj - xi) * (fy - yi) / (yj - yi + 1e-6f) + xi
+                        // This edge crosses the scanline, so yj != yi. Adding
+                        // an epsilon here shifts shared edges in opposite
+                        // directions and can leave uncovered stroke samples.
+                        (high_x - low_x) * (fy - low_y) / (high_y - low_y) + low_x
                     );
                 }
             }

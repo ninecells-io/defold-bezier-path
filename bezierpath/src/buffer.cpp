@@ -50,7 +50,7 @@ BufferInfo read_and_validate_buffer_info(lua_State *L, int index)
         luaL_error(L, "'channels' of should be an integer and 3 or 4");
     }
 
-    if (lua_isboolean(L, -1) == 1)
+    if (lua_isboolean(L, -2) == 1)
     {
         buffer_info.premultiply_alpha = lua_toboolean(L, -2);
     }

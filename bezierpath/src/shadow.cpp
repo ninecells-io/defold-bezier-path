@@ -249,9 +249,15 @@ void fill_shadow(
                     const int idx = dst_row + dx * channels;
                     const uint8_t sr = lut_r[sa], sg = lut_g[sa], sb = lut_b[sa];
 
-                    dst[idx + 0] = lerp8(dst[idx + 0], sr, sa);
-                    dst[idx + 1] = lerp8(dst[idx + 1], sg, sa);
-                    dst[idx + 2] = lerp8(dst[idx + 2], sb, sa);
+                    dst[idx + 0] = premul
+                        ? (uint8_t)std::min(255, (int)sr + (dst[idx + 0] * (255 - sa) + 127) / 255)
+                        : lerp8(dst[idx + 0], sr, sa);
+                    dst[idx + 1] = premul
+                        ? (uint8_t)std::min(255, (int)sg + (dst[idx + 1] * (255 - sa) + 127) / 255)
+                        : lerp8(dst[idx + 1], sg, sa);
+                    dst[idx + 2] = premul
+                        ? (uint8_t)std::min(255, (int)sb + (dst[idx + 2] * (255 - sa) + 127) / 255)
+                        : lerp8(dst[idx + 2], sb, sa);
 
                     const uint8_t da = dst[idx + 3];
                     dst[idx + 3] = (uint8_t)(da + (((255 - da) * sa + 127) / 255));
@@ -308,9 +314,15 @@ void fill_shadow(
 
                     const uint8_t sr = lut_r[sa], sg = lut_g[sa], sb = lut_b[sa];
 
-                    dst[idx + 0] = lerp8(dst[idx + 0], sr, sa);
-                    dst[idx + 1] = lerp8(dst[idx + 1], sg, sa);
-                    dst[idx + 2] = lerp8(dst[idx + 2], sb, sa);
+                    dst[idx + 0] = premul
+                        ? (uint8_t)std::min(255, (int)sr + (dst[idx + 0] * (255 - sa) + 127) / 255)
+                        : lerp8(dst[idx + 0], sr, sa);
+                    dst[idx + 1] = premul
+                        ? (uint8_t)std::min(255, (int)sg + (dst[idx + 1] * (255 - sa) + 127) / 255)
+                        : lerp8(dst[idx + 1], sg, sa);
+                    dst[idx + 2] = premul
+                        ? (uint8_t)std::min(255, (int)sb + (dst[idx + 2] * (255 - sa) + 127) / 255)
+                        : lerp8(dst[idx + 2], sb, sa);
 
                     const uint8_t da = dst[idx + 3];
                     dst[idx + 3] = (uint8_t)(da + (((255 - da) * sa + 127) / 255));

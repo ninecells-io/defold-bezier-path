@@ -1,0 +1,25 @@
+local bp = require "bezierpath.bezierpath"
+function init(self)
+    msg.post("@render:", "use_fixed_fit_projection", {near=-1,far=1})
+    msg.post("#sprite", "disable")
+    -- The authored atlas is 512 x 512; preserve its dimensions when replacing pixels.
+    local b = {
+        buffer = buffer.create(512*512, {{name=hash("rgba"), type=buffer.VALUE_TYPE_UINT8, count=4}}),
+        width=512, height=512, channels=4, premultiply_alpha=true,
+    }
+    bp.init_buffer(b, {r=0,g=0,b=0,a=0})
+    bp.with_path(b, function(h)
+        bp.pill(h, 40, 96, 432, 320)
+        bp.fill_path_gradient_shape(b, {r=143,g=232,b=167,a=1}, {r=92,g=173,b=240,a=1})
+    end)
+    resource.set_texture(go.get("#sprite", "texture0"), {
+        width=512, height=512, type=graphics.TEXTURE_TYPE_2D,
+        format=graphics.TEXTURE_FORMAT_RGBA, num_mip_maps=1,
+    }, b.buffer)
+end
+function on_message(self, message_id, message)
+    if message_id == hash("show") then
+        msg.post("#sprite", message.visible and "enable" or "disable")
+
+    end
+end

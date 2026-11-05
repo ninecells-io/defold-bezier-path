@@ -86,10 +86,9 @@ struct BufferInfo {
 enum PointType {
     POINT_TYPE_LINEAR,
     POINT_TYPE_QUAD_CURVE,
-    POINT_TYPE_ARC          // NEW
+    POINT_TYPE_ARC
 };
 
-// --- extend PathPoint (keep existing fields as-is)
 struct PathPoint {
     float x, y;        // anchor/end (always the segment end)
     PointType type;

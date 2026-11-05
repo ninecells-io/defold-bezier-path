@@ -8,7 +8,6 @@ source "${SCRIPT_DIR}/config.sh"
 
 SERVICE_SCRIPT="${EXTENDER_SOURCE_DIR}/server/scripts/standalone/service-standalone.sh"
 USER_ENV="${EXTENDER_SOURCE_DIR}/server/envs/user.env"
-DEPENDENCY_SERVICE="${SCRIPT_DIR}/dependency_server.sh"
 
 require_setup() {
     [[ -x "${SERVICE_SCRIPT}" && -f "${USER_ENV}" && -f "${BOB_JAR}" ]] || {
@@ -40,7 +39,6 @@ command_name="${1:-status}"
 case "${command_name}" in
     start)
         require_setup
-        "${DEPENDENCY_SERVICE}" ensure
         if is_ready; then
             echo "Extender is already ready at ${LOCAL_EXTENDER_URL}."
         else
@@ -53,17 +51,13 @@ case "${command_name}" in
         ;;
     stop)
         require_setup
-        dependency_result=0
-        "${DEPENDENCY_SERVICE}" stop || dependency_result=$?
         (
             cd "${EXTENDER_SOURCE_DIR}"
             "${SERVICE_SCRIPT}" stop standalone-dev
         )
-        exit "${dependency_result}"
         ;;
     status)
         require_setup
-        "${DEPENDENCY_SERVICE}" status
         if is_ready; then
             echo "Extender is ready at ${LOCAL_EXTENDER_URL}."
             curl --fail --silent --max-time 5 "${LOCAL_EXTENDER_URL}/health_report" || true
@@ -75,7 +69,6 @@ case "${command_name}" in
         ;;
     ensure)
         require_setup
-        "${DEPENDENCY_SERVICE}" ensure
         if is_ready; then
             echo "Extender is ready at ${LOCAL_EXTENDER_URL}."
         else

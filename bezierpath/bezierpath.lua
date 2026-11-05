@@ -98,7 +98,7 @@ end
 --Adds points based on points table
 function M.polygon(handle, points, closed)
     bezierpath.reset_path(handle)
-    for _, point in pairs(points) do
+    for _, point in ipairs(points) do
         if (point.r ~= nil) then
             bezierpath.add_arc_point(handle, point.center_x, point.center_y, point.r, point.a_start, point.a_end, point.clockwise)
         elseif (point.cx ~= nil) then
@@ -256,7 +256,7 @@ function M.add_quad_curve_point(handle, point, controlPoint)
     bezierpath.add_quad_curve_point(handle, point.x, point.y, controlPoint.x, controlPoint.y)
 end
 
--- Add a circular arc segment (UIKit-like). Angles in radians.
+-- Add a circular arc segment. Angles in radians.
 -- center = { x=..., y=... }, radius = number, clockwise = boolean
 function M.add_arc(path_handle, center, radius, start_angle, end_angle, clockwise)
     bezierpath.add_arc_point(path_handle, center.x, center.y, radius, start_angle, end_angle, clockwise)

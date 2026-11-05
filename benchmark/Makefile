@@ -1,8 +1,8 @@
 CXX ?= clang++
 CXXFLAGS ?= -O2 -std=c++11
-OUTPUT ?= /private/tmp/bezierpath-native-benchmark
-TEST_OUTPUT ?= /private/tmp/bezierpath-native-tests
-LEGACY_OUTPUT ?= /private/tmp/bezierpath-native-benchmark-legacy
+OUTPUT ?= /tmp/bezierpath-native-benchmark
+TEST_OUTPUT ?= /tmp/bezierpath-native-tests
+LEGACY_OUTPUT ?= /tmp/bezierpath-native-benchmark-legacy
 LEGACY_LIBRARY ?= ../build/arm64-osx/libBezierPath_6.a
 LUA ?= luajit
 
