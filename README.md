@@ -19,11 +19,11 @@ Add both libraries to **game.project → Project → Dependencies**, then fetch 
 
 ```ini
 [project]
-dependencies#0 = https://github.com/ninecells-io/defold-bezier-path/archive/refs/heads/main.zip
+dependencies#0 = https://github.com/ninecells-io/defold-bezier-path/archive/refs/tags/1.0.0.zip
 dependencies#1 = https://github.com/ninecells-io/defold-helpers/archive/refs/tags/0.1.6.zip
 ```
 
-The first URL tracks the `main` branch; use an existing release tag or full commit SHA for reproducible builds. Until this repository is public, access to its archive requires repository access. `defold-helpers` 0.1.6 is a public dependency used for color and GUI node helpers; consumers must add it explicitly because Defold does not fetch transitive library dependencies. Only `bezierpath/` is exported as this library.
+The first URL pins this library to release 1.0.0 for reproducible builds. See the [release notes](https://github.com/ninecells-io/defold-bezier-path/releases/tag/1.0.0). `defold-helpers` 0.1.6 is a public dependency used for color and GUI node helpers; consumers must add it explicitly because Defold does not fetch transitive library dependencies. Only `bezierpath/` is exported as this library.
 
 A native extension build is required. Defold's normal hosted build service is supported; the extension has no OS-specific rendering dependencies. The current demo is validated with Defold 1.13.0 on Apple Silicon macOS; other platforms require their own build/runtime verification.
 
