@@ -1,7 +1,7 @@
 [project]
 title = bezierpath
 version = 0.5
-dependencies#0 = https://github.com/ninecells-io/defold-helpers/archive/refs/tags/0.1.1.zip
+dependencies#0 = https://github.com/ninecells-io/defold-helpers/archive/refs/tags/0.1.6.zip
 
 [bootstrap]
 main_collection = /example/example.collectionc
