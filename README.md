@@ -19,11 +19,11 @@ Add both libraries to **game.project → Project → Dependencies**, then fetch 
 
 ```ini
 [project]
-dependencies#0 = https://github.com/ninecells-io/defold-bezier-path/archive/refs/tags/1.0.0.zip
+dependencies#0 = https://github.com/ninecells-io/defold-bezier-path/archive/refs/tags/1.0.1.zip
 dependencies#1 = https://github.com/ninecells-io/defold-helpers/archive/refs/tags/0.1.6.zip
 ```
 
-The first URL pins this library to release 1.0.0 for reproducible builds. See the [release notes](https://github.com/ninecells-io/defold-bezier-path/releases/tag/1.0.0). `defold-helpers` 0.1.6 is a public dependency used for color and GUI node helpers; consumers must add it explicitly because Defold does not fetch transitive library dependencies. Only `bezierpath/` is exported as this library.
+The first URL pins this library to release 1.0.1 for reproducible builds. See the [release notes](https://github.com/ninecells-io/defold-bezier-path/releases/tag/1.0.1). `defold-helpers` 0.1.6 is a public dependency used for color and GUI node helpers; consumers must add it explicitly because Defold does not fetch transitive library dependencies. Only `bezierpath/` is exported as this library.
 
 A native extension build is required. Defold's normal hosted build service is supported; the extension has no OS-specific rendering dependencies. The current demo is validated with Defold 1.13.0 on Apple Silicon macOS; other platforms require their own build/runtime verification.
 
@@ -129,6 +129,7 @@ Use `local bp = require "bezierpath.bezierpath"`. Unless a return value is liste
 | `create_texture(key, width, height, draw_fn, params, factor)` | Return opaque GUI texture id. Physical dimensions are `floor(width*factor)` × `floor(height*factor)`; callback is `draw_fn(b, factor, params)`. Default factor is 2. Scale geometry explicitly. |
 | `add_gui_box(root, width, height, pos, visible, key, draw_fn, params)` | Create a manual-size GUI box and return `node, texture_id`. Uses factor 1 and calls `draw_fn(b, params)`. Parent and position may be nil; omitted visibility means visible. |
 | `new_texture(width, height, key, bytes, texture_size)` | Upload existing RGBA bytes; return opaque texture id, or nil for nil bytes. Optional `texture_size={width,height}` overrides upload dimensions. |
+| `create_pixel_texture(key, width, height, pixels_fn)` | Return an opaque GUI texture id and call `pixels_fn()` for premultiplied RGBA bytes only on a cache miss. Shares its cache key with `new_texture` at the same dimensions. |
 | `set_node_texture(node, width, height, key, bytes, texture_size)` | Upload/assign existing bytes and return texture id; nil bytes leave the node unchanged. |
 | `draw_texture_region(bounds, draw_fn, params)` | Return `bytes, normalized_bounds`; callback is `draw_fn(b, params)`. Factor 1 with original-coordinate origin, no cache. |
 | `create_texture_region(key, bounds, draw_fn, params)` | Return `texture_id, normalized_bounds`; same origin/callback behavior as the raw region helper, with optional caching. |
