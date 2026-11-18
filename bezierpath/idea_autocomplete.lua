@@ -136,3 +136,59 @@ function bezierpath.stroke_path(buffer_info, width, red, green, blue, alpha, pos
 ---@param blue number
 ---@param alpha number
 function bezierpath.stroke_path_glow(buffer_info, width, radius, position, red, green, blue, alpha) end
+
+---Queue a solid fill when supported. Returns a job ID, or nil with an optional busy status.
+---@param buffer_info table
+---@param red number
+---@param green number
+---@param blue number
+---@param alpha number
+---@return number? id
+---@return string? status
+function bezierpath.begin_fill_path(buffer_info, red, green, blue, alpha) end
+
+---Queue a linear gradient fill when supported. Returns a job ID, or nil with an optional busy status.
+---@param buffer_info table
+---@param red1 number
+---@param green1 number
+---@param blue1 number
+---@param alpha1 number
+---@param red2 number
+---@param green2 number
+---@param blue2 number
+---@param alpha2 number
+---@param angle number
+---@return number? id
+---@return string? status
+function bezierpath.begin_fill_path_gradient(buffer_info, red1, green1, blue1, alpha1, red2, green2, blue2, alpha2, angle) end
+
+---Queue a shadow fill when supported. Returns a job ID, or nil with an optional busy status.
+---@param buffer_info table
+---@param offset_x number
+---@param offset_y number
+---@param radius number
+---@param inner boolean
+---@param red number
+---@param green number
+---@param blue number
+---@param alpha number
+---@return number? id
+---@return string? status
+function bezierpath.begin_fill_shadow(buffer_info, offset_x, offset_y, radius, inner, red, green, blue, alpha) end
+
+---Queue a path mask when supported. Returns a job ID, or nil with an optional busy status.
+---@param buffer_info table
+---@param inverted boolean
+---@return number? id
+---@return string? status
+function bezierpath.begin_mask_path(buffer_info, inverted) end
+
+---Copy the completed raster job into its original buffer. Returns true when ready.
+---@param id number
+---@param buffer_info table
+---@return boolean? done
+function bezierpath.poll_raster(id, buffer_info) end
+
+---Cancel or discard the specified raster job.
+---@param id number
+function bezierpath.cancel_raster(id) end

@@ -148,6 +148,15 @@ Generation tracking is intended for one exclusive owner of a texture set. Delete
 
 For density-aware textures, an application can set `bp.set_default_texture_factor(math.max(2, window.get_display_scale() * interface_scale))`. An explicit positive factor passed to `create_texture` overrides the default, including factor 1.
 
+### Cooperative rendering
+
+| Function | Behavior |
+| --- | --- |
+| `set_loading_task(task)` | Register a loading task for the current coroutine. Pass nil to clear it. Runtimes that cannot yield across protected calls render synchronously. |
+| `checkpoint()` | Call the current coroutine's loading task checkpoint, if one is registered. |
+
+A loading task supplies `task:checkpoint(force)` to yield between frames and `task:set_raster_job(id, cancel_fn)` to track or cancel pending native work. A forced checkpoint waits until the coroutine is resumed in a later frame. Large solid fills, linear gradients, masks, and shadows can use a native worker where supported. Keep the destination buffer alive and exclusively owned by the drawing coroutine until the operation completes.
+
 ### Optional persistent cache
 
 ```lua
@@ -189,6 +198,8 @@ The native extension registers the global `bezierpath`; the recommended wrapper 
 | `mask_path(buffer_info, inverted)` | Clear alpha inside the path; inverted=true clears the exterior. |
 | `stroke_path(buffer_info, width, red, green, blue, alpha, position, cap_style, join_style)` | Stroke a path; defaults are center, butt, miter. |
 | `stroke_path_glow(buffer_info, width, radius, position, red, green, blue, alpha)` | Draw a blurred stroke; position defaults to center. |
+The native `begin_fill_path`, `begin_fill_path_gradient`, `begin_fill_shadow`, and `begin_mask_path` bindings accept the same arguments as their synchronous counterparts. They return a job ID when queued, no values when synchronous fallback is needed, or `nil, "busy"` while another job is pending. Call `poll_raster(id, buffer_info)` with the original buffer until it returns true and copies the result. Call `cancel_raster(id)` to discard an outstanding job. The Lua wrapper manages this lifecycle when a loading task is registered.
+
 Native color channels are clamped to their documented ranges. Supply valid handles and appropriately sized buffers; do not rely on invalid inputs being accepted. Editor declarations in `bezierpath/api/bezierpath.script_api` and `idea_autocomplete.lua` describe this native global API.
 
 ## Development and tests

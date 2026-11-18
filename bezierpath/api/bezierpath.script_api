@@ -242,3 +242,117 @@
       type: number
     - name: alpha
       type: number
+  - name: begin_fill_path
+    type: function
+    desc: "Queue a solid fill when supported. Returns a job ID, or nil with an optional busy status."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+    returns:
+    - name: id
+      type: number
+      optional: true
+    - name: status
+      type: string
+      optional: true
+  - name: begin_fill_path_gradient
+    type: function
+    desc: "Queue a linear gradient fill when supported. Returns a job ID, or nil with an optional busy status."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: red1
+      type: number
+    - name: green1
+      type: number
+    - name: blue1
+      type: number
+    - name: alpha1
+      type: number
+    - name: red2
+      type: number
+    - name: green2
+      type: number
+    - name: blue2
+      type: number
+    - name: alpha2
+      type: number
+    - name: angle
+      type: number
+    returns:
+    - name: id
+      type: number
+      optional: true
+    - name: status
+      type: string
+      optional: true
+  - name: begin_fill_shadow
+    type: function
+    desc: "Queue a shadow fill when supported. Returns a job ID, or nil with an optional busy status."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: offset_x
+      type: number
+    - name: offset_y
+      type: number
+    - name: radius
+      type: number
+    - name: inner
+      type: boolean
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+    returns:
+    - name: id
+      type: number
+      optional: true
+    - name: status
+      type: string
+      optional: true
+  - name: begin_mask_path
+    type: function
+    desc: "Queue a path mask when supported. Returns a job ID, or nil with an optional busy status."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: inverted
+      type: boolean
+    returns:
+    - name: id
+      type: number
+      optional: true
+    - name: status
+      type: string
+      optional: true
+  - name: poll_raster
+    type: function
+    desc: "Copy the completed raster job into its original buffer. Returns true when ready."
+    parameters:
+    - name: id
+      type: number
+    - name: buffer_info
+      type: table
+    returns:
+    - name: done
+      type: boolean
+      optional: true
+  - name: cancel_raster
+    type: function
+    desc: "Cancel or discard the specified raster job."
+    parameters:
+    - name: id
+      type: number
