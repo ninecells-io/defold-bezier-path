@@ -6,6 +6,53 @@ local MINIMUM_TEXTURE_FACTOR = 2
 local default_texture_factor = MINIMUM_TEXTURE_FACTOR
 
 local M = {}
+local loading_tasks = setmetatable({}, { __mode = "k" })
+local can_yield_in_draw
+do
+    -- The drawing helpers protect native paths with xpcall. Lua 5.1 runtimes
+    -- without yieldable protected calls keep the synchronous drawing path.
+    local probe = coroutine.create(function()
+        xpcall(coroutine.yield, debug.traceback)
+    end)
+    coroutine.resume(probe)
+    can_yield_in_draw = coroutine.status(probe) == "suspended"
+end
+
+-- Only this coroutine cooperates with the task. Other GUI scenes keep using
+-- the synchronous drawing API while this coroutine is suspended.
+function M.set_loading_task(task)
+    if can_yield_in_draw then
+        loading_tasks[assert(coroutine.running(), "Loading requires a coroutine")] = task
+    end
+end
+
+function M.checkpoint()
+    local task = loading_tasks[coroutine.running()]
+    if task then task:checkpoint() end
+end
+
+local function rasterize(draw, begin, buffer_info, ...)
+    local task = loading_tasks[coroutine.running()]
+    if task then
+        task:checkpoint()
+        if begin then
+            local id, status = begin(buffer_info, ...)
+            while status == "busy" do
+                task:checkpoint(true)
+                id, status = begin(buffer_info, ...)
+            end
+            if id then
+                task:set_raster_job(id, bezierpath.cancel_raster)
+                repeat
+                    task:checkpoint(true)
+                until bezierpath.poll_raster(id, buffer_info)
+                task:set_raster_job(nil)
+                return
+            end
+        end
+    end
+    draw(buffer_info, ...)
+end
 
 local function is_finite(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
@@ -269,16 +316,16 @@ end
 
 --Fill the current path with given color
 function M.fill_path(buffer_info, color)
-    bezierpath.fill_path(buffer_info, color.r, color.g, color.b, color.a)
+    rasterize(bezierpath.fill_path, bezierpath.begin_fill_path, buffer_info, color.r, color.g, color.b, color.a)
 end
 
 function M.mask_path(buffer_info, inverted)
-    bezierpath.mask_path(buffer_info, inverted)
+    rasterize(bezierpath.mask_path, bezierpath.begin_mask_path, buffer_info, inverted)
 end
 
 --Fill the current path with a gradient
 function M.fill_path_gradient(buffer_info, color1, color2, angle)
-    bezierpath.fill_path_gradient(
+    rasterize(bezierpath.fill_path_gradient, bezierpath.begin_fill_path_gradient,
         buffer_info,
         color1.r, color1.g, color1.b, color1.a,
         color2.r, color2.g, color2.b, color2.a,
@@ -297,11 +344,13 @@ end
 
 --Fill the current path with a shadow
 function M.fill_shadow(buffer_info, offset, radius, inner, color)
-    bezierpath.fill_shadow(buffer_info, offset.x, offset.y, radius, inner, color.r, color.g, color.b, color.a)
+    rasterize(bezierpath.fill_shadow, bezierpath.begin_fill_shadow, buffer_info,
+        offset.x, offset.y, radius, inner, color.r, color.g, color.b, color.a)
 end
 
 --Draw a stroke along the path
 function M.stroke_path(buffer_info, width, color, position, cap_style, join_style)
+    M.checkpoint()
     bezierpath.stroke_path(buffer_info, width, color.r, color.g, color.b, color.a, position, cap_style, join_style)
 end
 
@@ -419,6 +468,22 @@ function M.new_texture(width, height, key, texture, texture_size)
     return texture_name
 end
 
+-- Keep the runtime identity used by new_texture and generate pixels only on
+-- a cache miss. The caller supplies premultiplied RGBA bytes for this size.
+function M.create_pixel_texture(key, width, height, pixels_fn)
+    M.checkpoint()
+    local record = texture_cache.describe("bytes", key, width, height, 1)
+    local name, created = create_gui_texture(record.runtime_name, width, height, function()
+        local pixels = texture_cache.load(record)
+        if pixels ~= nil then return pixels end
+        pixels = pixels_fn()
+        texture_cache.store(record, pixels)
+        return pixels
+    end)
+    if not created then texture_cache.touch(record) end
+    return name
+end
+
 function M.set_node_texture(node, width, height, key, texture, texture_size)
     local texture_name = M.new_texture(width, height, key, texture, texture_size)
     if texture_name ~= nil then gui.set_texture(node, texture_name) end
@@ -426,6 +491,7 @@ function M.set_node_texture(node, width, height, key, texture, texture_size)
 end
 
 function M.create_texture(key, width, height, draw_fn, params, factor)
+    M.checkpoint()
 
     factor = factor or default_texture_factor
     if not is_finite(factor) or factor <= 0 then factor = default_texture_factor end
@@ -447,6 +513,7 @@ end
 
 
 function M.create_texture_region(key, bounds, draw_fn, params)
+    M.checkpoint()
     local region = normalize_bounds(bounds)
     local record = texture_cache.describe("region", key, region.width, region.height, 1)
     local texture_name, created = create_gui_texture(record.runtime_name, region.width, region.height, function()

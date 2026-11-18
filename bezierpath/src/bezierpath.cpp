@@ -17,6 +17,7 @@
 #include "fill.h"
 #include "shadow.h"
 #include "stroke.h"
+#include "raster_job.h"
 
 // LUA FUNCTIONS
 
@@ -183,6 +184,7 @@ static int init_buffer_lua(lua_State* L) {
     return 0;
 }
 
+template<bool Async>
 static int fill_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -190,24 +192,36 @@ static int fill_path_lua(lua_State* L) {
     int r, g, b, a;
     read_color(L, 2, r, g, b, a);
 
+    if (Async) {
+        RasterParameters params = {};
+        params.color[0] = r; params.color[1] = g; params.color[2] = b; params.color[3] = a;
+        return begin_raster_job(L, buffer_info, RASTER_FILL, params);
+    }
     fill_path(buffer_info, r, g, b, a);
 
     assert(top == lua_gettop(L));
     return 0;
 }
 
+template<bool Async>
 static int mask_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
     BufferInfo buffer_info = read_and_validate_buffer_info(L, 1);
     bool inverted = lua_toboolean(L, 2);
 
+    if (Async) {
+        RasterParameters params = {};
+        params.inner_or_inverted = inverted;
+        return begin_raster_job(L, buffer_info, RASTER_MASK, params);
+    }
     mask_path(buffer_info, inverted);
 
     assert(top == lua_gettop(L));
     return 0;
 }
 
+template<bool Async>
 static int fill_path_gradient_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -221,6 +235,13 @@ static int fill_path_gradient_lua(lua_State* L) {
 
     float angle_deg = luaL_checknumber(L, 10);
 
+    if (Async) {
+        RasterParameters params = {};
+        params.color[0] = r1; params.color[1] = g1; params.color[2] = b1; params.color[3] = a1;
+        params.end_color[0] = r2; params.end_color[1] = g2; params.end_color[2] = b2; params.end_color[3] = a2;
+        params.angle = angle_deg;
+        return begin_raster_job(L, buffer_info, RASTER_GRADIENT, params);
+    }
     fill_path_gradient(buffer_info, r1, g1, b1, a1, r2, g2, b2, a2, angle_deg);
 
     assert(top == lua_gettop(L));
@@ -244,6 +265,7 @@ static int fill_path_gradient_shape_lua(lua_State* L) {
     return 0;
 }
 
+template<bool Async>
 static int fill_shadow_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -257,6 +279,15 @@ static int fill_shadow_lua(lua_State* L) {
     int r, g, b, a;
     read_color(L, 6, r, g, b, a);
 
+    if (Async) {
+        RasterParameters params = {};
+        params.color[0] = r; params.color[1] = g; params.color[2] = b; params.color[3] = a;
+        params.offset_x = offset_x;
+        params.offset_y = offset_y;
+        params.radius = radius;
+        params.inner_or_inverted = inner;
+        return begin_raster_job(L, buffer_info, RASTER_SHADOW, params);
+    }
     fill_shadow(buffer_info, offset_x, offset_y, radius, r, g, b, a, inner);
 
     assert(top == lua_gettop(L));
@@ -400,13 +431,19 @@ static const luaL_reg Module_methods[] = {
     {"set_path_closed", set_path_closed_lua},
     {"add_arc_point", add_arc_point_lua},
     {"init_buffer", init_buffer_lua},
-    {"fill_path", fill_path_lua},
-    {"fill_path_gradient", fill_path_gradient_lua},
+    {"fill_path", fill_path_lua<false>},
+    {"begin_fill_path", fill_path_lua<true>},
+    {"fill_path_gradient", fill_path_gradient_lua<false>},
+    {"begin_fill_path_gradient", fill_path_gradient_lua<true>},
     {"fill_path_gradient_shape", fill_path_gradient_shape_lua},
-    {"fill_shadow", fill_shadow_lua},
-    {"mask_path", mask_path_lua},
+    {"fill_shadow", fill_shadow_lua<false>},
+    {"begin_fill_shadow", fill_shadow_lua<true>},
+    {"mask_path", mask_path_lua<false>},
+    {"begin_mask_path", mask_path_lua<true>},
     {"stroke_path", stroke_path_lua},
     {"stroke_path_glow", stroke_path_glow_lua},
+    {"poll_raster", poll_raster_job},
+    {"cancel_raster", cancel_raster_job},
     {0, 0}
 };
 
@@ -418,6 +455,7 @@ static void LuaInit(lua_State *L) {
 }
 
 dmExtension::Result AppInitializeExtension(dmExtension::AppParams *params) {
+    initialize_raster_jobs();
     return dmExtension::RESULT_OK;
 }
 
@@ -428,6 +466,7 @@ dmExtension::Result InitializeExtension(dmExtension::Params *params) {
 }
 
 dmExtension::Result AppFinalizeExtension(dmExtension::AppParams *params) {
+    finalize_raster_jobs();
     return dmExtension::RESULT_OK;
 }
 
@@ -436,4 +475,9 @@ dmExtension::Result FinalizeExtension(dmExtension::Params *params) {
     return dmExtension::RESULT_OK;
 }
 
-DM_DECLARE_EXTENSION(BezierPath, LIB_NAME, AppInitializeExtension, AppFinalizeExtension, InitializeExtension, 0, 0, FinalizeExtension)
+static dmExtension::Result UpdateExtension(dmExtension::Params*) {
+    update_raster_jobs();
+    return dmExtension::RESULT_OK;
+}
+
+DM_DECLARE_EXTENSION(BezierPath, LIB_NAME, AppInitializeExtension, AppFinalizeExtension, InitializeExtension, UpdateExtension, 0, FinalizeExtension)

@@ -86,12 +86,14 @@ void initialize_sample_mask(
 void rasterize_polygon_to_sample_mask(
     const BufferInfo& buffer_info,
     const std::vector<std::pair<float, float> >& poly,
-    SampleMask& mask
+    SampleMask& mask,
+    RasterScratch& scratch = get_raster_scratch()
 );
 
 const SampleMask* get_fill_sample_mask(
     const BufferInfo& buffer_info,
-    PathPointList* path
+    PathPointList* path,
+    RasterScratch& scratch = get_raster_scratch()
 );
 
 uint8_t sample_count(uint16_t samples);

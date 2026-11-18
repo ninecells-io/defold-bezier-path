@@ -336,11 +336,12 @@ uint8_t sample_count(uint16_t samples) {
 void rasterize_polygon_to_sample_mask(
     const BufferInfo& buffer_info,
     const std::vector<std::pair<float, float> >& poly,
-    SampleMask& mask
+    SampleMask& mask,
+    RasterScratch& scratch
 ) {
     if (poly.size() < 3 || mask.empty()) return;
 
-    std::vector<float>& intersections = get_raster_scratch().intersections;
+    std::vector<float>& intersections = scratch.intersections;
     intersections.clear();
     intersections.reserve(poly.size());
 
@@ -400,7 +401,8 @@ void rasterize_polygon_to_sample_mask(
 
 const SampleMask* get_fill_sample_mask(
     const BufferInfo& buffer_info,
-    PathPointList* path
+    PathPointList* path,
+    RasterScratch& scratch
 ) {
     if (!path) return nullptr;
     if (path->fill_mask_valid &&
@@ -424,7 +426,7 @@ const SampleMask* get_fill_sample_mask(
         1.0f,
         path->fill_mask
     );
-    rasterize_polygon_to_sample_mask(buffer_info, *points, path->fill_mask);
+    rasterize_polygon_to_sample_mask(buffer_info, *points, path->fill_mask, scratch);
 
     path->fill_mask_valid = true;
     path->fill_mask_revision = path->revision;

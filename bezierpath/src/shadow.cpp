@@ -5,8 +5,6 @@
 #include <algorithm>
 #include <string>
 #include <stack>
-#include <unordered_map>
-#include <utility>
 #include "utils.h"
 #include "buffer.h"
 #include "shadow.h"
@@ -15,11 +13,7 @@
 
 static inline float fast_exp(float x) { return expf(x); } // keep separate in case you swap impls
 
-static const std::vector<float>& gaussian_kernel(int radius) {
-    static std::unordered_map<int, std::vector<float> > kernels;
-    std::unordered_map<int, std::vector<float> >::iterator found = kernels.find(radius);
-    if (found != kernels.end()) return found->second;
-
+static std::vector<float> gaussian_kernel(int radius) {
     const int kernel_size = 2 * radius + 1;
     std::vector<float> kernel((size_t)kernel_size);
     const float sigma = radius / 2.0f;
@@ -33,15 +27,15 @@ static const std::vector<float>& gaussian_kernel(int radius) {
     }
     const float inv_sum = 1.0f / sum;
     for (int i = 0; i < kernel_size; ++i) kernel[(size_t)i] *= inv_sum;
-    return kernels.emplace(radius, std::move(kernel)).first->second;
+    return kernel;
 }
 
-void gaussian_blur(std::vector<float>& image, int width, int height, int radius, bool clamp_edges)
+static void gaussian_blur(std::vector<float>& image, std::vector<float>& temp,
+                          int width, int height, int radius, bool clamp_edges)
 {
     if (radius <= 0 || width <= 0 || height <= 0) return;
 
-    const std::vector<float>& kernel = gaussian_kernel(radius);
-    std::vector<float>& temp = get_raster_scratch().temp;
+    const std::vector<float> kernel = gaussian_kernel(radius);
     temp.assign((size_t)width * (size_t)height, 0.0f);
 
     auto sample_h = [&](const float* rowp, int sx) -> float {
@@ -173,13 +167,20 @@ void fill_shadow(
     int r, int g, int b, int a,
     bool inner // false=outer drop shadow, true=inner shadow
 ) {
+    fill_shadow(buffer_info, get_path_points(buffer_info.path_handle), get_raster_scratch(),
+                offset_x, offset_y, blur_radius, r, g, b, a, inner);
+}
+
+void fill_shadow(
+    const BufferInfo& buffer_info, PathPointList* path, RasterScratch& scratch,
+    int offset_x, int offset_y, int blur_radius, int r, int g, int b, int a, bool inner
+) {
     const int width    = buffer_info.width;
     const int height   = buffer_info.height;
     const int channels = buffer_info.channels;
     const bool premul  = buffer_info.premultiply_alpha;
 
-    PathPointList* path_points = get_path_points(buffer_info.path_handle);
-    const SampleMask* sample_mask = get_fill_sample_mask(buffer_info, path_points);
+    const SampleMask* sample_mask = get_fill_sample_mask(buffer_info, path, scratch);
     if (!sample_mask || sample_mask->empty() || width <= 0 || height <= 0) return;
 
     const int radius = std::max(0, blur_radius);
@@ -194,7 +195,7 @@ void fill_shadow(
     // Only the path bounds plus the blur padding are represented. Together
     // with gaussian_blur's reusable temporary this caps a full 512x512 shadow
     // at two float images plus the 16-bit fill mask (about 2.5 MiB).
-    std::vector<float>& blurred = get_raster_scratch().values;
+    std::vector<float>& blurred = scratch.values;
     blurred.assign((size_t)blur_width * (size_t)blur_height, 0.0f);
     for (int local_y = 0; local_y < sample_mask->height; ++local_y) {
         const int y = sample_mask->y + local_y;
@@ -206,7 +207,7 @@ void fill_shadow(
         }
     }
 
-    gaussian_blur(blurred, blur_width, blur_height, blur_radius, /*clamp_edges=*/ !inner);
+    gaussian_blur(blurred, scratch.temp, blur_width, blur_height, blur_radius, /*clamp_edges=*/ !inner);
 
     const auto blurred_at = [&](int x, int y) -> float {
         if (x < blur_x0 || y < blur_y0 || x >= blur_x1 || y >= blur_y1) return 0.0f;

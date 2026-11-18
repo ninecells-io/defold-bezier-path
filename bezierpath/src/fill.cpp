@@ -87,10 +87,14 @@ void fill_color(
 
 void fill_path(
     const BufferInfo& buffer_info,
-    int r, int g, int b, int a
-) {
-    PathPointList* path = get_path_points(buffer_info.path_handle);
-    const SampleMask* mask = get_fill_sample_mask(buffer_info, path);
+    int r, int g, int b, int a) {
+    fill_path(buffer_info, get_path_points(buffer_info.path_handle), get_raster_scratch(), r, g, b, a);
+}
+
+void fill_path(
+    const BufferInfo& buffer_info, PathPointList* path, RasterScratch& scratch,
+    int r, int g, int b, int a) {
+    const SampleMask* mask = get_fill_sample_mask(buffer_info, path, scratch);
     if (!mask || mask->empty()) return;
 
     uint8_t* dst = buffer_info.bytes;
@@ -116,11 +120,17 @@ void fill_path_gradient(
     const BufferInfo& buffer_info,
     int r1, int g1, int b1, int a1,
     int r2, int g2, int b2, int a2,
-    float angle_deg
-) {
+    float angle_deg) {
+    fill_path_gradient(buffer_info, get_path_points(buffer_info.path_handle), get_raster_scratch(), r1, g1, b1, a1, r2, g2, b2, a2, angle_deg);
+}
+
+void fill_path_gradient(
+    const BufferInfo& buffer_info, PathPointList* path, RasterScratch& scratch,
+    int r1, int g1, int b1, int a1,
+    int r2, int g2, int b2, int a2,
+    float angle_deg) {
     if (buffer_info.channels < 3) return;
-    PathPointList* path = get_path_points(buffer_info.path_handle);
-    const SampleMask* mask = get_fill_sample_mask(buffer_info, path);
+    const SampleMask* mask = get_fill_sample_mask(buffer_info, path, scratch);
     if (!mask || mask->empty()) return;
 
     const float angle_rad = angle_deg * (float)M_PI / 180.0f;
@@ -280,11 +290,15 @@ void fill_path_gradient_shape(
 
 void mask_path(
     const BufferInfo& buffer_info,
-    bool inverted
-) {
+    bool inverted) {
+    mask_path(buffer_info, get_path_points(buffer_info.path_handle), get_raster_scratch(), inverted);
+}
+
+void mask_path(
+    const BufferInfo& buffer_info, PathPointList* path, RasterScratch& scratch,
+    bool inverted) {
     if (buffer_info.channels != 4 || buffer_info.width <= 0 || buffer_info.height <= 0) return;
-    PathPointList* path = get_path_points(buffer_info.path_handle);
-    const SampleMask* mask = get_fill_sample_mask(buffer_info, path);
+    const SampleMask* mask = get_fill_sample_mask(buffer_info, path, scratch);
     if (!mask) return;
 
     uint8_t* dst = buffer_info.bytes;
