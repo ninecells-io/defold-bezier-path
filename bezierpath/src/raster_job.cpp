@@ -8,6 +8,7 @@
 #include "raster_job.h"
 #include "fill.h"
 #include "shadow.h"
+#include "stroke.h"
 #include "utils.h"
 
 namespace {
@@ -47,7 +48,12 @@ bool is_large(const BufferInfo& buffer, PathPointList* path, RasterOperation ope
     if (operation == RASTER_MASK && params.inner_or_inverted)
         return true;
 
-    const float padding = shadow ? std::max(1, params.radius) : 1;
+    float padding = shadow ? std::max(1, params.radius) : 1;
+    if (operation == RASTER_STROKE) {
+        if (!std::isfinite(params.stroke_width) || params.stroke_width <= 0.0f)
+            return false;
+        padding += (params.stroke_join == JOIN_MITER ? 4.0f : 1.0f) * params.stroke_width;
+    }
     float x0, y0, x1, y1;
     if (!get_path_bounds(path, padding, x0, y0, x1, y1))
         return false;
@@ -84,6 +90,10 @@ int32_t process(HJobContext, HJob, void*, void* data)
             fill_shadow(work.buffer, &work.path, scratch, p.offset_x, p.offset_y, p.radius,
                         c[0], c[1], c[2], c[3], false);
             mask_path(work.buffer, p.mask_handle ? &work.mask : &work.path, scratch, false);
+            break;
+        case RASTER_STROKE:
+            stroke_path(work.buffer, &work.path, scratch, p.stroke_width, p.stroke_position,
+                        c[0], c[1], c[2], c[3], p.stroke_cap, p.stroke_join);
             break;
     }
     if (work.timing) {

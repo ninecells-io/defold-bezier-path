@@ -45,7 +45,7 @@ local function report_elapsed(phase, started, bytes)
     if started and observe then observe(phase, now() - started, bytes) end
 end
 
-local function rasterize(draw, begin, buffer_info, ...)
+local function rasterize(draw, begin, sync_phase, buffer_info, ...)
     local task = loading_tasks[coroutine.running()]
     if task then
         task:checkpoint()
@@ -78,6 +78,7 @@ local function rasterize(draw, begin, buffer_info, ...)
                     if queue then
                         observe("bezier.raster.queue", queue)
                         observe("bezier.raster.worker", work)
+                        if sync_phase then observe(sync_phase .. ".worker", work) end
                     end
                     observe("bezier.raster.wait", math.max(0, poll_started - wait_started - (queue or 0) - (work or 0)))
                 end
@@ -87,7 +88,7 @@ local function rasterize(draw, begin, buffer_info, ...)
     end
     local started = observe and now()
     draw(buffer_info, ...)
-    report_elapsed("bezier.raster.sync", started)
+    report_elapsed(sync_phase or "bezier.raster.sync", started)
 end
 
 local function is_finite(value)
@@ -368,16 +369,16 @@ end
 
 --Fill the current path with given color
 function M.fill_path(buffer_info, color)
-    rasterize(bezierpath.fill_path, bezierpath.begin_fill_path, buffer_info, color.r, color.g, color.b, color.a)
+    rasterize(bezierpath.fill_path, bezierpath.begin_fill_path, nil, buffer_info, color.r, color.g, color.b, color.a)
 end
 
 function M.mask_path(buffer_info, inverted)
-    rasterize(bezierpath.mask_path, bezierpath.begin_mask_path, buffer_info, inverted)
+    rasterize(bezierpath.mask_path, bezierpath.begin_mask_path, nil, buffer_info, inverted)
 end
 
 --Fill the current path with a gradient
 function M.fill_path_gradient(buffer_info, color1, color2, angle)
-    rasterize(bezierpath.fill_path_gradient, bezierpath.begin_fill_path_gradient,
+    rasterize(bezierpath.fill_path_gradient, bezierpath.begin_fill_path_gradient, nil,
         buffer_info,
         color1.r, color1.g, color1.b, color1.a,
         color2.r, color2.g, color2.b, color2.a,
@@ -396,13 +397,13 @@ end
 
 --Fill the current path with a shadow
 function M.fill_shadow(buffer_info, offset, radius, inner, color)
-    rasterize(bezierpath.fill_shadow, bezierpath.begin_fill_shadow, buffer_info,
+    rasterize(bezierpath.fill_shadow, bezierpath.begin_fill_shadow, nil, buffer_info,
         offset.x, offset.y, radius, inner, color.r, color.g, color.b, color.a)
 end
 
 function M.fill_shadow_with_mask(buffer_info, offset, radius, color, mask_handle)
     if bezierpath.fill_shadow_with_mask then
-        rasterize(bezierpath.fill_shadow_with_mask, bezierpath.begin_fill_shadow_with_mask, buffer_info,
+        rasterize(bezierpath.fill_shadow_with_mask, bezierpath.begin_fill_shadow_with_mask, nil, buffer_info,
             offset.x, offset.y, radius, color.r, color.g, color.b, color.a, mask_handle)
         return
     end
@@ -421,10 +422,8 @@ end
 
 --Draw a stroke along the path
 function M.stroke_path(buffer_info, width, color, position, cap_style, join_style)
-    M.checkpoint()
-    local started = observe and now()
-    bezierpath.stroke_path(buffer_info, width, color.r, color.g, color.b, color.a, position, cap_style, join_style)
-    report_elapsed("bezier.raster.stroke", started)
+    rasterize(bezierpath.stroke_path, bezierpath.begin_stroke_path, "bezier.raster.stroke",
+        buffer_info, width, color.r, color.g, color.b, color.a, position, cap_style, join_style)
 end
 
 --Draw a glow effect along the path

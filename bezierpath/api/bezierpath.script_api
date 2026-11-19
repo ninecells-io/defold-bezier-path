@@ -391,6 +391,38 @@
     - name: status
       type: string
       optional: true
+  - name: begin_stroke_path
+    type: function
+    desc: "Queue a large path stroke using the same arguments as stroke_path."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: width
+      type: number
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+    - name: position
+      type: string
+      optional: true
+    - name: cap_style
+      type: string
+      optional: true
+    - name: join_style
+      type: string
+      optional: true
+    returns:
+    - name: id
+      type: number
+      optional: true
+    - name: status
+      type: string
+      optional: true
   - name: poll_raster
     type: function
     desc: "Copy the completed raster job into its original buffer. Returns true when ready."

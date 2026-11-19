@@ -209,6 +209,20 @@ function bezierpath.begin_fill_shadow_with_mask(buffer_info, offset_x, offset_y,
 ---@return string? status
 function bezierpath.begin_mask_path(buffer_info, inverted) end
 
+---Queue a large path stroke. Uses the same arguments as stroke_path.
+---@param buffer_info table
+---@param width number
+---@param red number
+---@param green number
+---@param blue number
+---@param alpha number
+---@param position? string
+---@param cap_style? string
+---@param join_style? string
+---@return number? id
+---@return string? status
+function bezierpath.begin_stroke_path(buffer_info, width, red, green, blue, alpha, position, cap_style, join_style) end
+
 ---Copy the completed raster job into its original buffer. Returns true when ready.
 ---@param id number
 ---@param buffer_info table

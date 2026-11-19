@@ -9,7 +9,7 @@
 static void draw_circle_cap(
     const BufferInfo& buffer_info,
     float cx, float cy, float dx, float dy, float radius,
-    SampleMask& mask, int segments = 16
+    SampleMask& mask, RasterScratch& scratch, int segments = 16
 ) {
     const float nx = -dy;
     const float ny = dx;
@@ -25,19 +25,19 @@ static void draw_circle_cap(
         const float y = rx * dy + ry * ny;
         arc_points.push_back(std::make_pair(cx + x * radius, cy + y * radius));
     }
-    rasterize_polygon_to_sample_mask(buffer_info, arc_points, mask);
+    rasterize_polygon_to_sample_mask(buffer_info, arc_points, mask, scratch);
 }
 
 static void draw_stroke_cap(
     const BufferInfo& buffer_info,
     float cx, float cy, float dx, float dy,
-    float width, int cap_style, SampleMask& mask
+    float width, int cap_style, SampleMask& mask, RasterScratch& scratch
 ) {
     const float nx = -dy;
     const float ny = dx;
     const float half_w = width * 0.5f;
     if (cap_style == CAP_ROUND) {
-        draw_circle_cap(buffer_info, cx, cy, dx, dy, half_w, mask);
+        draw_circle_cap(buffer_info, cx, cy, dx, dy, half_w, mask, scratch);
     } else if (cap_style == CAP_SQUARE) {
         const float px = cx + dx * half_w;
         const float py = cy + dy * half_w;
@@ -46,7 +46,7 @@ static void draw_stroke_cap(
         cap.push_back(std::make_pair(px - nx * half_w, py - ny * half_w));
         cap.push_back(std::make_pair(cx - nx * half_w, cy - ny * half_w));
         cap.push_back(std::make_pair(cx + nx * half_w, cy + ny * half_w));
-        rasterize_polygon_to_sample_mask(buffer_info, cap, mask);
+        rasterize_polygon_to_sample_mask(buffer_info, cap, mask, scratch);
     }
 }
 
@@ -55,13 +55,13 @@ static void draw_bevel_join(
     const std::pair<float, float>& p,
     const std::pair<float, float>& a,
     const std::pair<float, float>& b,
-    SampleMask& mask
+    SampleMask& mask, RasterScratch& scratch
 ) {
     std::vector<std::pair<float, float> > triangle;
     triangle.push_back(a);
     triangle.push_back(b);
     triangle.push_back(p);
-    rasterize_polygon_to_sample_mask(buffer_info, triangle, mask);
+    rasterize_polygon_to_sample_mask(buffer_info, triangle, mask, scratch);
 }
 
 static void draw_round_join(
@@ -70,7 +70,7 @@ static void draw_round_join(
     float radius, float a0, float a1,
     const std::pair<float, float>& a,
     const std::pair<float, float>& b,
-    SampleMask& mask,
+    SampleMask& mask, RasterScratch& scratch,
     int segments = 16
 ) {
     std::vector<std::pair<float, float> > points;
@@ -92,7 +92,7 @@ static void draw_round_join(
         ));
     }
     points.push_back(b);
-    rasterize_polygon_to_sample_mask(buffer_info, points, mask);
+    rasterize_polygon_to_sample_mask(buffer_info, points, mask, scratch);
 }
 
 static void draw_join_at_vertex(
@@ -102,7 +102,7 @@ static void draw_join_at_vertex(
     const std::pair<float, float>& p2,
     float offset_in, float offset_out,
     int join_style,
-    SampleMask& mask
+    SampleMask& mask, RasterScratch& scratch
 ) {
     float d0x = p1.first - p0.first;
     float d0y = p1.second - p0.second;
@@ -157,15 +157,15 @@ static void draw_join_at_vertex(
                 join.push_back(a);
                 join.push_back(std::make_pair(p1.first + mx, p1.second + my));
                 join.push_back(b);
-                rasterize_polygon_to_sample_mask(buffer_info, join, mask);
+                rasterize_polygon_to_sample_mask(buffer_info, join, mask, scratch);
                 return;
             }
         }
-        draw_bevel_join(buffer_info, p1, a, b, mask);
+        draw_bevel_join(buffer_info, p1, a, b, mask, scratch);
     } else if (join_style == JOIN_BEVEL) {
-        draw_bevel_join(buffer_info, p1, a, b, mask);
+        draw_bevel_join(buffer_info, p1, a, b, mask, scratch);
     } else if (join_style == JOIN_ROUND) {
-        draw_round_join(buffer_info, p1, radius, a0, a1, a, b, mask);
+        draw_round_join(buffer_info, p1, radius, a0, a1, a, b, mask, scratch);
     }
 }
 
@@ -212,9 +212,17 @@ void stroke_path(
     int r, int g, int b, int a,
     int cap_style, int join_style
 ) {
-    PathPointList* path = get_path_points(buffer_info.path_handle);
-    if (!path || path->points.empty() || width <= 0.0f) return;
+    stroke_path(buffer_info, get_path_points(buffer_info.path_handle), get_raster_scratch(),
+                width, position_mode, r, g, b, a, cap_style, join_style);
+}
 
+void stroke_path(
+    const BufferInfo& buffer_info, PathPointList* path, RasterScratch& scratch,
+    float width, int position_mode,
+    int r, int g, int b, int a,
+    int cap_style, int join_style
+) {
+    if (!path || path->points.empty() || !std::isfinite(width) || width <= 0.0f) return;
     const std::vector<std::pair<float, float> >* flat_path_ptr = nullptr;
     if (!get_flattened_path(path, flat_path_ptr)) return;
     const std::vector<std::pair<float, float> >& flat_path = *flat_path_ptr;
@@ -232,7 +240,7 @@ void stroke_path(
         max_y = std::max(max_y, flat_path[i].second);
     }
 
-    SampleMask& mask = get_raster_scratch().mask;
+    SampleMask& mask = scratch.mask;
     initialize_sample_mask(buffer_info, min_x, min_y, max_x, max_y, (join_style == JOIN_MITER ? 4.0f : 1.0f) * width + 1.0f, mask);
     if (mask.empty()) return;
 
@@ -268,12 +276,12 @@ void stroke_path(
         quad.push_back(std::make_pair(p1.first + nx * offset_out, p1.second + ny * offset_out));
         quad.push_back(std::make_pair(p1.first - nx * offset_in, p1.second - ny * offset_in));
         quad.push_back(std::make_pair(p0.first - nx * offset_in, p0.second - ny * offset_in));
-        rasterize_polygon_to_sample_mask(buffer_info, quad, mask);
+        rasterize_polygon_to_sample_mask(buffer_info, quad, mask, scratch);
 
         if (!path->is_closed) {
-            if (i == 0) draw_stroke_cap(buffer_info, p0.first, p0.second, -dx, -dy, width, cap_style, mask);
+            if (i == 0) draw_stroke_cap(buffer_info, p0.first, p0.second, -dx, -dy, width, cap_style, mask, scratch);
             if (i + 2 == flat_path.size()) {
-                draw_stroke_cap(buffer_info, p1.first, p1.second, dx, dy, width, cap_style, mask);
+                draw_stroke_cap(buffer_info, p1.first, p1.second, dx, dy, width, cap_style, mask, scratch);
             }
         }
 
@@ -281,7 +289,7 @@ void stroke_path(
             draw_join_at_vertex(
                 buffer_info, p0, p1, flat_path[i + 2],
                 offset_in, offset_out,
-                (corner_flags.empty() || corner_flags[i + 1]) ? join_style : JOIN_ROUND, mask
+                (corner_flags.empty() || corner_flags[i + 1]) ? join_style : JOIN_ROUND, mask, scratch
             );
         }
     }
@@ -302,7 +310,7 @@ void stroke_path(
             quad.push_back(std::make_pair(p1.first + nx * offset_out, p1.second + ny * offset_out));
             quad.push_back(std::make_pair(p1.first - nx * offset_in, p1.second - ny * offset_in));
             quad.push_back(std::make_pair(p0.first - nx * offset_in, p0.second - ny * offset_in));
-            rasterize_polygon_to_sample_mask(buffer_info, quad, mask);
+            rasterize_polygon_to_sample_mask(buffer_info, quad, mask, scratch);
         }
 
         if (flat_path.size() >= 3) {
@@ -311,14 +319,14 @@ void stroke_path(
                 draw_join_at_vertex(
                     buffer_info, flat_path[last - 1], flat_path[last], flat_path[0],
                     offset_in, offset_out,
-                    (corner_flags.empty() || corner_flags[last]) ? join_style : JOIN_ROUND, mask
+                    (corner_flags.empty() || corner_flags[last]) ? join_style : JOIN_ROUND, mask, scratch
                 );
             }
             {
                 draw_join_at_vertex(
                     buffer_info, flat_path[last], flat_path[0], flat_path[1],
                     offset_in, offset_out,
-                    (corner_flags.empty() || corner_flags[0]) ? join_style : JOIN_ROUND, mask
+                    (corner_flags.empty() || corner_flags[0]) ? join_style : JOIN_ROUND, mask, scratch
                 );
             }
         }
@@ -327,11 +335,11 @@ void stroke_path(
     for (int local_y = 0; local_y < mask.height; ++local_y) {
         const int y = mask.y + local_y;
         for (int local_x = 0; local_x < mask.width; ++local_x) {
-            const uint8_t count = sample_count(mask.samples[(size_t)local_y * mask.width + local_x]);
-            if (count == 0) continue;
+            const uint16_t samples = mask.samples[(size_t)local_y * mask.width + local_x];
+            if (samples == 0) continue;
             blend_stroke_pixel(
                 buffer_info, mask.x + local_x, y,
-                r, g, b, a, count * (1.0f / 16.0f), false
+                r, g, b, a, sample_count(samples) * (1.0f / 16.0f), false
             );
         }
     }

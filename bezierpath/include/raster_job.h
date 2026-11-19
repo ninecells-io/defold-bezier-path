@@ -7,7 +7,8 @@ enum RasterOperation {
     RASTER_GRADIENT,
     RASTER_SHADOW,
     RASTER_MASK,
-    RASTER_MASKED_SHADOW
+    RASTER_MASKED_SHADOW,
+    RASTER_STROKE
 };
 
 struct RasterParameters {
@@ -19,6 +20,10 @@ struct RasterParameters {
     int radius;
     bool inner_or_inverted;
     uint32_t mask_handle;
+    float stroke_width;
+    int stroke_position;
+    int stroke_cap;
+    int stroke_join;
 };
 
 void initialize_raster_jobs();

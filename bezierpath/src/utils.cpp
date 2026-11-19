@@ -333,6 +333,21 @@ uint8_t sample_count(uint16_t samples) {
 #endif
 }
 
+// A shared mask may span the whole texture while an individual stroke join
+// covers only a few rows. Use the exact sample positions to skip empty rows.
+static int first_row_below(
+    const BufferInfo& buffer_info, int first, int end, int sample_y, float boundary
+) {
+    while (first < end) {
+        const int row = first + (end - first) / 2;
+        float unused_x, y;
+        sample_position(buffer_info, 0, row, 0, sample_y, unused_x, y);
+        if (y >= boundary) first = row + 1;
+        else end = row;
+    }
+    return first;
+}
+
 void rasterize_polygon_to_sample_mask(
     const BufferInfo& buffer_info,
     const std::vector<std::pair<float, float> >& poly,
@@ -341,6 +356,17 @@ void rasterize_polygon_to_sample_mask(
 ) {
     if (poly.size() < 3 || mask.empty()) return;
 
+    float min_y = poly.front().second;
+    float max_y = min_y;
+    for (const auto& point : poly) {
+        min_y = std::min(min_y, point.second);
+        max_y = std::max(max_y, point.second);
+    }
+    const int mask_end = mask.y + mask.height;
+    // The scanline rule includes the lower edge and excludes the upper one.
+    const int first_row = first_row_below(buffer_info, mask.y, mask_end, 3, max_y);
+    const int end_row = first_row_below(buffer_info, first_row, mask_end, 0, min_y);
+
     std::vector<float>& intersections = scratch.intersections;
     intersections.clear();
     intersections.reserve(poly.size());
@@ -348,7 +374,7 @@ void rasterize_polygon_to_sample_mask(
     const int sample_x_min = std::max(0, mask.x * 4);
     const int sample_x_max = std::min(buffer_info.width * 4, (mask.x + mask.width) * 4);
 
-    for (int py = mask.y; py < mask.y + mask.height; ++py) {
+    for (int py = first_row; py < end_row; ++py) {
         for (int sy = 0; sy < 4; ++sy) {
             float unused_x = 0.0f;
             float fy = 0.0f;

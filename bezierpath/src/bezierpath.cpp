@@ -314,6 +314,7 @@ static int fill_shadow_with_mask_lua(lua_State* L) {
     return 0;
 }
 
+template<bool Async>
 static int stroke_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -356,6 +357,15 @@ static int stroke_path_lua(lua_State* L) {
         else if (strcmp(join, "miter") != 0) return luaL_error(L, "Invalid join style: %s", join);
     }
 
+    if (Async) {
+        RasterParameters params = {};
+        params.color[0] = r; params.color[1] = g; params.color[2] = b; params.color[3] = a;
+        params.stroke_width = stroke_width;
+        params.stroke_position = position;
+        params.stroke_cap = cap_style;
+        params.stroke_join = join_style;
+        return begin_raster_job(L, buffer_info, RASTER_STROKE, params);
+    }
     stroke_path(buffer_info, stroke_width, position, r, g, b, a, cap_style, join_style);
 
     assert(top == lua_gettop(L));
@@ -462,7 +472,8 @@ static const luaL_reg Module_methods[] = {
     {"begin_fill_shadow_with_mask", fill_shadow_with_mask_lua<true>},
     {"mask_path", mask_path_lua<false>},
     {"begin_mask_path", mask_path_lua<true>},
-    {"stroke_path", stroke_path_lua},
+    {"stroke_path", stroke_path_lua<false>},
+    {"begin_stroke_path", stroke_path_lua<true>},
     {"stroke_path_glow", stroke_path_glow_lua},
     {"poll_raster", poll_raster_job},
     {"cancel_raster", cancel_raster_job},
