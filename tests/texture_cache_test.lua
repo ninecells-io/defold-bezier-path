@@ -6,6 +6,7 @@ local files = {}
 local undeletable = {}
 local before_write
 local save_failure_countdown
+local manifest_writes = 0
 local fail_rename = false
 local system_name = "Darwin"
 
@@ -14,8 +15,15 @@ io = {
         if string.sub(path, 1, 9) == "/missing/" then return nil, "missing directory" end
         if mode == "rb" then
             if files[path] == nil then return nil, "not found" end
+            local position = 1
             return {
-                read = function(_, format) assert(format == "*a"); return files[path] end,
+                read = function(_, count)
+                    local data = files[path]
+                    if position > #data then return nil end
+                    local bytes = data:sub(position, position + count - 1)
+                    position = position + #bytes
+                    return bytes
+                end,
                 close = function() return true end,
             }
         end
@@ -60,6 +68,7 @@ sys = {
         return base .. "-" .. folder .. "-" .. filename
     end,
     save = function(path, value)
+        manifest_writes = manifest_writes + 1
         if save_failure_countdown then
             save_failure_countdown = save_failure_countdown - 1
             if save_failure_countdown == 0 then
@@ -102,6 +111,16 @@ local pixels = string.rep("p", 16)
 assert(cache.load(record) == nil)
 assert(cache.store(record, pixels))
 assert(cache.load(record) == pixels)
+
+local writes_before_reads = manifest_writes
+for _ = 1, 20 do
+    assert(cache.load(record) == pixels and cache.touch(record))
+end
+assert(manifest_writes == writes_before_reads, "cache hits must batch manifest writes")
+assert(cache.flush())
+assert(manifest_writes == writes_before_reads + 1, "flush must persist batched access order once")
+for _ = 1, 64 do assert(cache.touch(record)) end
+assert(manifest_writes == writes_before_reads + 2, "sustained reads must persist recency periodically")
 
 -- Reconfiguration reloads the manifest and represents a new process/module lifecycle.
 cache.configure({ enabled = true, folder = "test", version = "1" })

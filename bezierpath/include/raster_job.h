@@ -6,7 +6,8 @@ enum RasterOperation {
     RASTER_FILL,
     RASTER_GRADIENT,
     RASTER_SHADOW,
-    RASTER_MASK
+    RASTER_MASK,
+    RASTER_MASKED_SHADOW
 };
 
 struct RasterParameters {
@@ -17,6 +18,7 @@ struct RasterParameters {
     int offset_y;
     int radius;
     bool inner_or_inverted;
+    uint32_t mask_handle;
 };
 
 void initialize_raster_jobs();
@@ -28,3 +30,4 @@ void finalize_raster_jobs();
 int begin_raster_job(lua_State* L, const BufferInfo& buffer, RasterOperation operation, const RasterParameters& params);
 int poll_raster_job(lua_State* L);
 int cancel_raster_job(lua_State* L);
+int set_raster_job_timing(lua_State* L);

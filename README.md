@@ -118,6 +118,7 @@ Use `local bp = require "bezierpath.bezierpath"`. Unless a return value is liste
 | `fill_path_gradient_shape(b, color1, color2)` | Gradient based on distance from the contour toward the interior. |
 | `mask_path(b, inverted)` | Clear inside the path; `inverted=true` clears outside instead. Operates on existing pixels. |
 | `fill_shadow(b, offset, radius, inner, color)` | `offset` is a point; `inner=true` clips to the interior. Include blur/offset padding to avoid clipping. |
+| `fill_shadow_with_mask(b, offset, radius, color, mask_handle)` | Draw an outer shadow, then clear the interior of the mask in the same raster job. Omit `mask_handle` to use the shadow path. |
 | `stroke_path(b, width, color, position, cap_style, join_style)` | Positions: `center` (default), `inside`, `outside` (one-sided offsets follow path winding); caps: `butt` (default), `round`, `square`; joins: `miter` (default, limit 4 with bevel fallback), `round`, `bevel`. |
 | `stroke_path_glow(b, width, radius, position, color)` | Blurred stroke; position defaults to `center`. |
 
@@ -138,6 +139,7 @@ Use `local bp = require "bezierpath.bezierpath"`. Unless a return value is liste
 | `begin_texture_generation(owner)` | Delete the previous generation's tracked textures for this owner and start tracking newly requested textures. Owner must be non-nil; generations cannot nest. |
 | `end_texture_generation(owner)` | End tracking; owner must match the active generation. |
 | `configure_texture_cache(options)` | Configure optional disk caching; see below. |
+| `flush_texture_cache()` | Persist pending access order. Returns true if there is nothing to flush or the save succeeds. |
 | `clear_texture_cache()` | Invalidate tracked disk files; returns whether invalidation succeeded. Already-live GUI textures remain until deleted. |
 
 Regions floor x/y, ceil their right/top edges, and have dimensions of at least one pixel. Use `get_path_bounds` plus explicit stroke/shadow padding when calculating a crop.
@@ -154,6 +156,7 @@ For density-aware textures, an application can set `bp.set_default_texture_facto
 | --- | --- |
 | `set_loading_task(task)` | Register a loading task for the current coroutine. Pass nil to clear it. Runtimes that cannot yield across protected calls render synchronously. |
 | `checkpoint()` | Call the current coroutine's loading task checkpoint, if one is registered. |
+| `set_performance_observer(callback)` | Set an optional callback receiving a phase name, elapsed seconds, and optional byte count. Pass nil to disable timing. Native worker and queue timings require the matching extension. |
 
 A loading task supplies `task:checkpoint(force)` to yield between frames and `task:set_raster_job(id, cancel_fn)` to track or cancel pending native work. A forced checkpoint waits until the coroutine is resumed in a later frame. Large solid fills, linear gradients, masks, and shadows can use a native worker where supported. Keep the destination buffer alive and exclusively owned by the drawing coroutine until the operation completes.
 
@@ -172,7 +175,7 @@ Caching is disabled by default. `folder` is the application-specific namespace p
 
 Cache identity includes the logical key, version, texture kind, physical dimensions, and factor. Only high-level GUI texture helpers use disk caching; raw buffer functions do not. Hits skip drawing. Missing, corrupt, truncated, or unwritable files fall back to normal rendering.
 
-The default budget is 256 MiB on iOS/Android and 512 MiB elsewhere. Zero disables disk storage. Least recently used tracked files are evicted before writes; oversized textures remain uncached. Reducing the limit trims existing files. Failed evictions suppress new writes until enough space is available. Headers count toward the budget; the manifest does not. Older cache formats are invalidated automatically.
+The default budget is 256 MiB on iOS/Android and 512 MiB elsewhere. Zero disables disk storage. Least recently used tracked files are evicted before writes; oversized textures remain uncached. Reducing the limit trims existing files. Failed evictions suppress new writes until enough space is available. Headers count toward the budget; the manifest does not. Older cache formats are invalidated automatically. Read hits update access order in memory. Access order is saved in batches, on writes, or when explicitly flushed.
 
 ## Native API
 
@@ -195,10 +198,11 @@ The native extension registers the global `bezierpath`; the recommended wrapper 
 | `fill_path_gradient(buffer_info, red1, green1, blue1, alpha1, red2, green2, blue2, alpha2, angle)` | Fill a linear gradient; angle is in degrees. |
 | `fill_path_gradient_shape(buffer_info, red1, green1, blue1, alpha1, red2, green2, blue2, alpha2)` | Fill a gradient from the contour toward the interior. |
 | `fill_shadow(buffer_info, offset_x, offset_y, radius, inner, red, green, blue, alpha)` | Composite an inner or outer blurred shadow. |
+| `fill_shadow_with_mask(buffer_info, offset_x, offset_y, radius, red, green, blue, alpha, mask_handle)` | Composite an outer blurred shadow and clear the interior of `mask_handle`. If omitted, clear the interior of the current path. |
 | `mask_path(buffer_info, inverted)` | Clear alpha inside the path; inverted=true clears the exterior. |
 | `stroke_path(buffer_info, width, red, green, blue, alpha, position, cap_style, join_style)` | Stroke a path; defaults are center, butt, miter. |
 | `stroke_path_glow(buffer_info, width, radius, position, red, green, blue, alpha)` | Draw a blurred stroke; position defaults to center. |
-The native `begin_fill_path`, `begin_fill_path_gradient`, `begin_fill_shadow`, and `begin_mask_path` bindings accept the same arguments as their synchronous counterparts. They return a job ID when queued, no values when synchronous fallback is needed, or `nil, "busy"` while another job is pending. Call `poll_raster(id, buffer_info)` with the original buffer until it returns true and copies the result. Call `cancel_raster(id)` to discard an outstanding job. The Lua wrapper manages this lifecycle when a loading task is registered.
+The `begin_fill_path`, `begin_fill_path_gradient`, `begin_fill_shadow`, `begin_fill_shadow_with_mask`, and `begin_mask_path` bindings accept the same arguments as their synchronous counterparts. They return a job ID when queued, no values when synchronous fallback is needed, or `nil, "busy"` while another job is pending. Call `poll_raster(id, buffer_info)` with the original buffer until it returns true and copies the result. `set_raster_job_timing(true)` enables optional queue and worker elapsed seconds on successful polls. Call `cancel_raster(id)` to discard an outstanding job. The Lua wrapper manages this lifecycle when a loading task is registered.
 
 Native color channels are clamped to their documented ranges. Supply valid handles and appropriately sized buffers; do not rely on invalid inputs being accepted. Editor declarations in `bezierpath/api/bezierpath.script_api` and `idea_autocomplete.lua` describe this native global API.
 

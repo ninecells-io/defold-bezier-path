@@ -112,4 +112,20 @@ api.end_texture_generation(layout)
 assert(dynamic_textures[new_layout_texture], "the replacement layout texture must be available")
 assert(texture_deletions > 0, "starting a replacement generation must delete old textures")
 
+local observed = {}
+api.set_performance_observer(function(phase, elapsed, bytes)
+    assert(type(phase) == "string" and elapsed >= 0)
+    if phase == "bezier.upload" and bytes then observed[#observed + 1] = bytes end
+end)
+local winner
+local result = api.create_texture("racing", 4, 4, function()
+    -- A second task can upload a matching texture while the outer task yields.
+    winner = api.create_texture("racing", 4, 4, function() end, nil, 1)
+end, nil, 1)
+assert(result == winner and dynamic_textures[result], "the first completed upload must be reusable")
+assert(#observed == 1 and observed[1] == 64, "report bytes only for successful uploads")
+api.set_performance_observer(nil)
+api.create_texture("without-observer", 4, 4, function() end, nil, 1)
+assert(#observed == 1)
+
 print("bezier-path texture API tests passed")

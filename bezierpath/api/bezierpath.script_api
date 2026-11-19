@@ -188,6 +188,29 @@
       type: number
     - name: alpha
       type: number
+  - name: fill_shadow_with_mask
+    type: function
+    desc: "Composite an outer shadow and clear the interior of the specified mask or shadow path."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: offset_x
+      type: number
+    - name: offset_y
+      type: number
+    - name: radius
+      type: number
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+    - name: mask_handle
+      type: number
+      optional: true
   - name: mask_path
     type: function
     desc: "Clear alpha inside the path; inverted=true clears the exterior."
@@ -323,6 +346,36 @@
     - name: status
       type: string
       optional: true
+  - name: begin_fill_shadow_with_mask
+    type: function
+    desc: "Queue an outer shadow and mask in one job. Returns a job ID, or nil with an optional busy status."
+    parameters:
+    - name: buffer_info
+      type: table
+    - name: offset_x
+      type: number
+    - name: offset_y
+      type: number
+    - name: radius
+      type: number
+    - name: red
+      type: number
+    - name: green
+      type: number
+    - name: blue
+      type: number
+    - name: alpha
+      type: number
+    - name: mask_handle
+      type: number
+      optional: true
+    returns:
+    - name: id
+      type: number
+      optional: true
+    - name: status
+      type: string
+      optional: true
   - name: begin_mask_path
     type: function
     desc: "Queue a path mask when supported. Returns a job ID, or nil with an optional busy status."
@@ -350,9 +403,21 @@
     - name: done
       type: boolean
       optional: true
+    - name: queue_seconds
+      type: number
+      optional: true
+    - name: worker_seconds
+      type: number
+      optional: true
   - name: cancel_raster
     type: function
     desc: "Cancel or discard the specified raster job."
     parameters:
     - name: id
       type: number
+  - name: set_raster_job_timing
+    type: function
+    desc: "Enable optional queue and worker durations on completed raster polls."
+    parameters:
+    - name: enabled
+      type: boolean

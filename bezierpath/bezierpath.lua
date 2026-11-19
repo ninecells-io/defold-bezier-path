@@ -7,6 +7,8 @@ local default_texture_factor = MINIMUM_TEXTURE_FACTOR
 
 local M = {}
 local loading_tasks = setmetatable({}, { __mode = "k" })
+local now = socket and socket.gettime or os.clock
+local observe
 local can_yield_in_draw
 do
     -- The drawing helpers protect native paths with xpcall. Lua 5.1 runtimes
@@ -31,27 +33,61 @@ function M.checkpoint()
     if task then task:checkpoint() end
 end
 
+-- The optional observer receives (phase, seconds, bytes). Native job timings
+-- are available when the engine was built with the matching extension.
+function M.set_performance_observer(observer)
+    assert(observer == nil or type(observer) == "function", "Expected a performance observer")
+    observe = observer
+    if bezierpath.set_raster_job_timing then bezierpath.set_raster_job_timing(observer ~= nil) end
+end
+
+local function report_elapsed(phase, started, bytes)
+    if started and observe then observe(phase, now() - started, bytes) end
+end
+
 local function rasterize(draw, begin, buffer_info, ...)
     local task = loading_tasks[coroutine.running()]
     if task then
         task:checkpoint()
         if begin then
+            local started = observe and now()
             local id, status = begin(buffer_info, ...)
+            local submit_seconds = started and now() - started
+            local waiting = status == "busy" and observe and now()
             while status == "busy" do
                 task:checkpoint(true)
                 id, status = begin(buffer_info, ...)
             end
+            if id then task:set_raster_job(id, bezierpath.cancel_raster) end
+            if submit_seconds and observe then observe("bezier.raster.submit", submit_seconds) end
+            report_elapsed("bezier.raster.busy", waiting)
             if id then
-                task:set_raster_job(id, bezierpath.cancel_raster)
-                repeat
+                local wait_started = observe and now()
+                local poll_started = observe and now()
+                local done, queue, work = bezierpath.poll_raster(id, buffer_info)
+                while not done do
                     task:checkpoint(true)
-                until bezierpath.poll_raster(id, buffer_info)
+                    poll_started = observe and now()
+                    done, queue, work = bezierpath.poll_raster(id, buffer_info)
+                end
                 task:set_raster_job(nil)
+                if observe and wait_started and poll_started then
+                    local finished = now()
+                    local bytes = buffer_info.width * buffer_info.height * buffer_info.channels
+                    observe("bezier.raster.poll", finished - poll_started, bytes)
+                    if queue then
+                        observe("bezier.raster.queue", queue)
+                        observe("bezier.raster.worker", work)
+                    end
+                    observe("bezier.raster.wait", math.max(0, poll_started - wait_started - (queue or 0) - (work or 0)))
+                end
                 return
             end
         end
     end
+    local started = observe and now()
     draw(buffer_info, ...)
+    report_elapsed("bezier.raster.sync", started)
 end
 
 local function is_finite(value)
@@ -99,7 +135,16 @@ function M.end_texture_generation(owner)
 end
 
 function M.configure_texture_cache(options)
+    local started = observe and now()
     texture_cache.configure(options)
+    report_elapsed("bezier.cache.configure", started)
+end
+
+function M.flush_texture_cache()
+    local started = observe and now()
+    local ok = texture_cache.flush()
+    report_elapsed("bezier.cache.flush", started)
+    return ok
 end
 
 function M.clear_texture_cache()
@@ -348,6 +393,25 @@ function M.fill_shadow(buffer_info, offset, radius, inner, color)
         offset.x, offset.y, radius, inner, color.r, color.g, color.b, color.a)
 end
 
+function M.fill_shadow_with_mask(buffer_info, offset, radius, color, mask_handle)
+    if bezierpath.fill_shadow_with_mask then
+        rasterize(bezierpath.fill_shadow_with_mask, bezierpath.begin_fill_shadow_with_mask, buffer_info,
+            offset.x, offset.y, radius, color.r, color.g, color.b, color.a, mask_handle)
+        return
+    end
+
+    M.fill_shadow(buffer_info, offset, radius, false, color)
+    if not mask_handle then
+        M.mask_path(buffer_info, false)
+        return
+    end
+
+    local mask_buffer = {}
+    for key, value in pairs(buffer_info) do mask_buffer[key] = value end
+    mask_buffer.path_handle = mask_handle
+    M.mask_path(mask_buffer, false)
+end
+
 --Draw a stroke along the path
 function M.stroke_path(buffer_info, width, color, position, cap_style, join_style)
     M.checkpoint()
@@ -452,11 +516,36 @@ local function create_gui_texture(texture_name, width, height, pixels_fn)
     gui.delete_texture(texture_name)
 
     local pixels = pixels_fn()
+    local started = observe and now()
     local ok, create_reason = gui.new_texture(texture_name, width, height, image.TYPE_RGBA, pixels)
+    if started then report_elapsed("bezier.upload", started, ok and #pixels or nil) end
     if not ok then
+        -- A second coroutine can finish the same texture while this draw yields.
+        if create_reason == gui.RESULT_TEXTURE_ALREADY_EXISTS and create_reason ~= nil then
+            return texture_name, false
+        end
         error("Unable to create texture: " .. tostring(create_reason))
     end
     return texture_name, true
+end
+
+local function load_cached(record)
+    local started = observe and now()
+    local pixels = texture_cache.load(record)
+    if started then report_elapsed("bezier.cache.read", started, pixels and #pixels) end
+    return pixels
+end
+
+local function store_cached(record, pixels)
+    local started = observe and now()
+    local stored = texture_cache.store(record, pixels)
+    if started then report_elapsed("bezier.cache.write", started, stored and #pixels or nil) end
+end
+
+local function touch_cached(record)
+    local started = observe and now()
+    texture_cache.touch(record)
+    report_elapsed("bezier.cache.touch", started)
 end
 
 function M.new_texture(width, height, key, texture, texture_size)
@@ -474,13 +563,13 @@ function M.create_pixel_texture(key, width, height, pixels_fn)
     M.checkpoint()
     local record = texture_cache.describe("bytes", key, width, height, 1)
     local name, created = create_gui_texture(record.runtime_name, width, height, function()
-        local pixels = texture_cache.load(record)
+        local pixels = load_cached(record)
         if pixels ~= nil then return pixels end
         pixels = pixels_fn()
-        texture_cache.store(record, pixels)
+        store_cached(record, pixels)
         return pixels
     end)
-    if not created then texture_cache.touch(record) end
+    if not created then touch_cached(record) end
     return name
 end
 
@@ -501,13 +590,13 @@ function M.create_texture(key, width, height, draw_fn, params, factor)
 
     local record = texture_cache.describe("texture", key, width, height, factor)
     local texture_name, created = create_gui_texture(record.runtime_name, width, height, function()
-        local pixels = texture_cache.load(record)
+        local pixels = load_cached(record)
         if pixels ~= nil then return pixels end
         pixels = M.draw_texture(width, height, draw_fn, factor, params)
-        texture_cache.store(record, pixels)
+        store_cached(record, pixels)
         return pixels
     end)
-    if not created then texture_cache.touch(record) end
+    if not created then touch_cached(record) end
     return texture_name
 end
 
@@ -517,13 +606,13 @@ function M.create_texture_region(key, bounds, draw_fn, params)
     local region = normalize_bounds(bounds)
     local record = texture_cache.describe("region", key, region.width, region.height, 1)
     local texture_name, created = create_gui_texture(record.runtime_name, region.width, region.height, function()
-        local pixels = texture_cache.load(record)
+        local pixels = load_cached(record)
         if pixels ~= nil then return pixels end
         pixels, region = M.draw_texture_region(region, draw_fn, params)
-        texture_cache.store(record, pixels)
+        store_cached(record, pixels)
         return pixels
     end)
-    if not created then texture_cache.touch(record) end
+    if not created then touch_cached(record) end
     return texture_name, region
 end
 

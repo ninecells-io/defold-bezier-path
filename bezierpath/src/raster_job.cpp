@@ -2,6 +2,7 @@
 #include <dmsdk/sdk.h>
 #include <dmsdk/dlib/jobsystem.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include "raster_job.h"
@@ -10,22 +11,30 @@
 #include "utils.h"
 
 namespace {
+using Clock = std::chrono::steady_clock;
+
 struct RasterJob {
     uint32_t id;
     HJob job;
     BufferInfo buffer;
     dmBuffer::HBuffer destination;
     PathPointList path;
+    PathPointList mask;
     std::vector<uint8_t> pixels;
     RasterOperation operation;
     RasterParameters params;
     bool ready;
     bool cancelled;
+    bool timing;
+    Clock::time_point submitted;
+    double queue_seconds;
+    double work_seconds;
 };
 
 HJobContext context;
 RasterJob* pending;
 uint32_t next_id;
+bool measure_jobs;
 
 bool is_large(const BufferInfo& buffer, PathPointList* path, RasterOperation operation, const RasterParameters& params)
 {
@@ -35,7 +44,8 @@ bool is_large(const BufferInfo& buffer, PathPointList* path, RasterOperation ope
     if (operation == RASTER_MASK && params.inner_or_inverted)
         return true;
 
-    const float padding = operation == RASTER_SHADOW ? std::max(1, params.radius) : 1;
+    const bool shadow = operation == RASTER_SHADOW || operation == RASTER_MASKED_SHADOW;
+    const float padding = shadow ? std::max(1, params.radius) : 1;
     float x0, y0, x1, y1;
     if (!get_path_bounds(path, padding, x0, y0, x1, y1))
         return false;
@@ -47,6 +57,8 @@ bool is_large(const BufferInfo& buffer, PathPointList* path, RasterOperation ope
 int32_t process(HJobContext, HJob, void*, void* data)
 {
     RasterJob& work = *static_cast<RasterJob*>(data);
+    Clock::time_point started;
+    if (work.timing) started = Clock::now();
     RasterScratch scratch;
     const RasterParameters& p = work.params;
     const int* c = p.color;
@@ -66,6 +78,15 @@ int32_t process(HJobContext, HJob, void*, void* data)
         case RASTER_MASK:
             mask_path(work.buffer, &work.path, scratch, p.inner_or_inverted);
             break;
+        case RASTER_MASKED_SHADOW:
+            fill_shadow(work.buffer, &work.path, scratch, p.offset_x, p.offset_y, p.radius,
+                        c[0], c[1], c[2], c[3], false);
+            mask_path(work.buffer, p.mask_handle ? &work.mask : &work.path, scratch, false);
+            break;
+    }
+    if (work.timing) {
+        work.work_seconds = std::chrono::duration<double>(Clock::now() - started).count();
+        work.queue_seconds = std::chrono::duration<double>(started - work.submitted).count();
     }
     return 0;
 }
@@ -133,6 +154,8 @@ int begin_raster_job(lua_State* L, const BufferInfo& buffer, RasterOperation ope
         return 2;
     }
 
+    PathPointList* mask = params.mask_handle ? get_path_points(params.mask_handle) : 0;
+
     RasterJob* work = new RasterJob();
     if (++next_id == 0)
         ++next_id;
@@ -141,6 +164,10 @@ int begin_raster_job(lua_State* L, const BufferInfo& buffer, RasterOperation ope
     work->params = params;
     work->path.points = source->points;
     work->path.is_closed = source->is_closed;
+    if (mask) {
+        work->mask.points = mask->points;
+        work->mask.is_closed = mask->is_closed;
+    }
     work->buffer = buffer;
     work->destination = buffer.buffer;
     work->buffer.buffer = 0;
@@ -158,6 +185,8 @@ int begin_raster_job(lua_State* L, const BufferInfo& buffer, RasterOperation ope
         return luaL_error(L, "Unable to allocate raster job");
     }
     pending = work;
+    work->timing = measure_jobs;
+    if (work->timing) work->submitted = Clock::now();
     if (JobSystemPushJob(context, work->job) != JOBSYSTEM_RESULT_OK) {
         cancel_pending();
         return luaL_error(L, "Unable to submit raster job");
@@ -172,6 +201,10 @@ int poll_raster_job(lua_State* L)
     if (!pending || pending->id != id || pending->cancelled)
         return luaL_error(L, "Raster job is unavailable");
     if (!pending->ready)
+        JobSystemUpdate(context, 0);
+    if (!pending)
+        return luaL_error(L, "Raster job is unavailable");
+    if (!pending->ready)
         return 0;
     const BufferInfo buffer = read_and_validate_buffer_info(L, 2);
     if (buffer.buffer != pending->destination || buffer.src_size != pending->pixels.size()) {
@@ -179,9 +212,20 @@ int poll_raster_job(lua_State* L)
         return luaL_error(L, "Raster job destination changed");
     }
     std::memcpy(buffer.bytes, pending->pixels.data(), buffer.src_size);
-    retire();
     lua_pushboolean(L, 1);
-    return 1;
+    const int results = pending->timing ? 3 : 1;
+    if (pending->timing) {
+        lua_pushnumber(L, pending->queue_seconds);
+        lua_pushnumber(L, pending->work_seconds);
+    }
+    retire();
+    return results;
+}
+
+int set_raster_job_timing(lua_State* L)
+{
+    measure_jobs = lua_toboolean(L, 1);
+    return 0;
 }
 
 int cancel_raster_job(lua_State* L)

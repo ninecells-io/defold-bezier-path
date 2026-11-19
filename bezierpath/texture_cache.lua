@@ -3,6 +3,7 @@ local MANIFEST_FILE = "bezierpath-texture-cache-manifest"
 local FILE_PREFIX = "bezierpath-texture-"
 local FILE_SUFFIX = ".rgba"
 local RECORD_MAGIC = "BEZIERPATH-RGBA-1\n"
+local ACCESS_BATCH_SIZE = 64
 
 local config = {
     enabled = false,
@@ -12,6 +13,7 @@ local config = {
 
 local manifest
 local total_size = 0
+local access_updates = 0
 
 local M = {}
 
@@ -41,7 +43,9 @@ end
 local function save_manifest()
     if not config.enabled or manifest == nil then return false end
     local ok, result = pcall(sys.save, cache_path(MANIFEST_FILE), manifest)
-    return ok and result ~= false
+    if not ok or result == false then return false end
+    access_updates = 0
+    return true
 end
 
 local function fresh_manifest()
@@ -132,6 +136,12 @@ local function mark_used(entry)
     entry.last_used = manifest.access_sequence
 end
 
+local function record_access(entry)
+    mark_used(entry)
+    access_updates = access_updates + 1
+    if access_updates % ACCESS_BATCH_SIZE == 0 then save_manifest() end
+end
+
 local function identity(kind, key, width, height, factor)
     assert_non_empty_string(key, "texture cache key")
     return table.concat({
@@ -150,23 +160,28 @@ local function record_prefix(width, height)
     return RECORD_MAGIC .. tostring(width) .. "\n" .. tostring(height) .. "\nrgba\n"
 end
 
-local function read_all(path)
+local function read_pixels(path, prefix, size)
     local ok, data = pcall(function()
         local file = io.open(path, "rb")
         if not file then return nil end
-        local bytes = file:read("*a")
+        local bytes
+        if file:read(#prefix) == prefix then
+            bytes = file:read(size)
+            if file:read(1) ~= nil then bytes = nil end
+        end
         file:close()
-        return bytes
+        return bytes and #bytes == size and bytes or nil
     end)
     return ok and data or nil
 end
 
-local function write_all(path, data)
+local function write_pixels(path, prefix, pixels)
     local temporary_path = path .. ".tmp"
     local file
     local ok = pcall(function()
         file = assert(io.open(temporary_path, "wb"))
-        assert(file:write(data))
+        assert(file:write(prefix))
+        assert(file:write(pixels))
         assert(file:flush())
         assert(file:close())
         file = nil
@@ -190,6 +205,7 @@ function M.configure(options)
         end
     end
 
+    M.flush()
     config = {
         enabled = enabled,
         folder = enabled and options.folder or nil,
@@ -198,10 +214,17 @@ function M.configure(options)
     }
     manifest = nil
     total_size = 0
+    access_updates = 0
     if enabled and load_manifest() then
-        evict_to_fit(0)
-        save_manifest()
+        if total_size > config.max_size_bytes then
+            evict_to_fit(0)
+            save_manifest()
+        end
     end
+end
+
+function M.flush()
+    return access_updates == 0 or save_manifest()
 end
 
 function M.clear()
@@ -230,12 +253,11 @@ function M.load(record)
     if not load_manifest() or manifest.files[record.filename] == nil then return nil end
 
     local prefix = record_prefix(record.width, record.height)
-    local data = read_all(cache_path(record.filename))
     local expected_size = record.width * record.height * 4
-    if data and string.sub(data, 1, #prefix) == prefix and #data == #prefix + expected_size then
-        mark_used(manifest.files[record.filename])
-        save_manifest()
-        return string.sub(data, #prefix + 1)
+    local pixels = read_pixels(cache_path(record.filename), prefix, expected_size)
+    if pixels then
+        record_access(manifest.files[record.filename])
+        return pixels
     end
 
     remove_entry(record.filename)
@@ -248,8 +270,8 @@ function M.touch(record)
     if not config.enabled or not load_manifest() then return false end
     local entry = manifest.files[record.filename]
     if not entry then return false end
-    mark_used(entry)
-    return save_manifest()
+    record_access(entry)
+    return true
 end
 
 function M.store(record, pixels)
@@ -259,11 +281,12 @@ function M.store(record, pixels)
     end
 
     if not load_manifest() then return false end
-    local data = record_prefix(record.width, record.height) .. pixels
+    local prefix = record_prefix(record.width, record.height)
+    local size = #prefix + #pixels
     -- Oversized textures still render, but must not empty the cache or be saved.
-    if #data > config.max_size_bytes then return false end
+    if size > config.max_size_bytes then return false end
     if manifest.files[record.filename] and not remove_entry(record.filename) then return false end
-    local fits = evict_to_fit(#data)
+    local fits = evict_to_fit(size)
     if not fits then
         save_manifest()
         return false
@@ -271,7 +294,7 @@ function M.store(record, pixels)
 
     -- Reserve the file in the manifest before writing, including its temporary
     -- path. An interrupted write stays tracked and counts against the budget.
-    local entry = { size = #data }
+    local entry = { size = size }
     mark_used(entry)
     manifest.files[record.filename] = entry
     total_size = total_size + entry.size
@@ -279,7 +302,7 @@ function M.store(record, pixels)
         remove_entry(record.filename)
         return false
     end
-    if not write_all(cache_path(record.filename), data) then
+    if not write_pixels(cache_path(record.filename), prefix, pixels) then
         remove_entry(record.filename)
         save_manifest()
         return false

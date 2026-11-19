@@ -294,6 +294,26 @@ static int fill_shadow_lua(lua_State* L) {
     return 0;
 }
 
+template<bool Async>
+static int fill_shadow_with_mask_lua(lua_State* L) {
+    BufferInfo buffer = read_and_validate_buffer_info(L, 1);
+    RasterParameters params = {};
+    params.offset_x = luaL_checknumber(L, 2);
+    params.offset_y = luaL_checknumber(L, 3);
+    params.radius = luaL_checknumber(L, 4);
+    read_color(L, 5, params.color[0], params.color[1], params.color[2], params.color[3]);
+    params.mask_handle = (uint32_t)luaL_optnumber(L, 9, 0);
+
+    if (Async) {
+        return begin_raster_job(L, buffer, RASTER_MASKED_SHADOW, params);
+    }
+    fill_shadow(buffer, params.offset_x, params.offset_y, params.radius,
+                params.color[0], params.color[1], params.color[2], params.color[3], false);
+    if (params.mask_handle) buffer.path_handle = params.mask_handle;
+    mask_path(buffer, false);
+    return 0;
+}
+
 static int stroke_path_lua(lua_State* L) {
     int top = lua_gettop(L);
 
@@ -438,12 +458,15 @@ static const luaL_reg Module_methods[] = {
     {"fill_path_gradient_shape", fill_path_gradient_shape_lua},
     {"fill_shadow", fill_shadow_lua<false>},
     {"begin_fill_shadow", fill_shadow_lua<true>},
+    {"fill_shadow_with_mask", fill_shadow_with_mask_lua<false>},
+    {"begin_fill_shadow_with_mask", fill_shadow_with_mask_lua<true>},
     {"mask_path", mask_path_lua<false>},
     {"begin_mask_path", mask_path_lua<true>},
     {"stroke_path", stroke_path_lua},
     {"stroke_path_glow", stroke_path_glow_lua},
     {"poll_raster", poll_raster_job},
     {"cancel_raster", cancel_raster_job},
+    {"set_raster_job_timing", set_raster_job_timing},
     {0, 0}
 };
 
