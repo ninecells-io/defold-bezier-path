@@ -139,6 +139,7 @@ Use `local bp = require "bezierpath.bezierpath"`. Unless a return value is liste
 | `begin_texture_generation(owner)` | Delete the previous generation's tracked textures for this owner and start tracking newly requested textures. Owner must be non-nil; generations cannot nest. |
 | `end_texture_generation(owner)` | End tracking; owner must match the active generation. |
 | `configure_texture_cache(options)` | Configure optional disk caching; see below. |
+| `update_texture_cache()` | Attempt one deferred cache operation during an idle update and return whether work was attempted. |
 | `flush_texture_cache()` | Persist pending access order. Returns true if there is nothing to flush or the save succeeds. |
 | `clear_texture_cache()` | Invalidate tracked disk files; returns whether invalidation succeeded. Already-live GUI textures remain until deleted. |
 
@@ -176,6 +177,8 @@ Caching is disabled by default. `folder` is the application-specific namespace p
 Cache identity includes the logical key, version, texture kind, physical dimensions, and factor. Only high-level GUI texture helpers use disk caching; raw buffer functions do not. Hits skip drawing. Missing, corrupt, truncated, or unwritable files fall back to normal rendering.
 
 The default budget is 256 MiB on iOS/Android and 512 MiB elsewhere. Zero disables disk storage. Least recently used tracked files are evicted before writes; oversized textures remain uncached. Reducing the limit trims existing files. Failed evictions suppress new writes until enough space is available. Headers count toward the budget; the manifest does not. Older cache formats are invalidated automatically. Read hits update access order in memory. Access order is saved in batches, on writes, or when explicitly flushed.
+
+Set `deferred_write_bytes` to cap in-memory pending writes and move new file writes and periodic access-order saves to `update_texture_cache()`. Call it from an idle update after interactive content is visible. Pending pixels are reusable by other GUI scenes. New entries are skipped when the queue reaches its byte or 64-record limit. `flush_texture_cache()` persists recency, and clearing or reconfiguring the cache discards queued entries.
 
 ## Native API
 

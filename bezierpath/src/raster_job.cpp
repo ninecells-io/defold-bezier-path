@@ -38,13 +38,15 @@ bool measure_jobs;
 
 bool is_large(const BufferInfo& buffer, PathPointList* path, RasterOperation operation, const RasterParameters& params)
 {
-    const float threshold = 512.0f * 512.0f;
+    const bool shadow = operation == RASTER_SHADOW || operation == RASTER_MASKED_SHADOW;
+    // Blurring the coverage adds work across the shadow bounds. Let the
+    // worker pick up medium-sized board shadows during cooperative loads.
+    const float threshold = shadow ? 320.0f * 320.0f : 512.0f * 512.0f;
     if (float(buffer.width) * buffer.height < threshold)
         return false;
     if (operation == RASTER_MASK && params.inner_or_inverted)
         return true;
 
-    const bool shadow = operation == RASTER_SHADOW || operation == RASTER_MASKED_SHADOW;
     const float padding = shadow ? std::max(1, params.radius) : 1;
     float x0, y0, x1, y1;
     if (!get_path_bounds(path, padding, x0, y0, x1, y1))

@@ -4,6 +4,7 @@ local FILE_PREFIX = "bezierpath-texture-"
 local FILE_SUFFIX = ".rgba"
 local RECORD_MAGIC = "BEZIERPATH-RGBA-1\n"
 local ACCESS_BATCH_SIZE = 64
+local MAX_PENDING_RECORDS = 64
 
 local config = {
     enabled = false,
@@ -14,6 +15,10 @@ local config = {
 local manifest
 local total_size = 0
 local access_updates = 0
+local deferred_access_update = false
+local pending = {}
+local pending_by_filename = {}
+local pending_size = 0
 
 local M = {}
 
@@ -45,6 +50,7 @@ local function save_manifest()
     local ok, result = pcall(sys.save, cache_path(MANIFEST_FILE), manifest)
     if not ok or result == false then return false end
     access_updates = 0
+    deferred_access_update = false
     return true
 end
 
@@ -139,7 +145,13 @@ end
 local function record_access(entry)
     mark_used(entry)
     access_updates = access_updates + 1
-    if access_updates % ACCESS_BATCH_SIZE == 0 then save_manifest() end
+    if access_updates % ACCESS_BATCH_SIZE == 0 then
+        if config.deferred_write_bytes then
+            deferred_access_update = true
+        else
+            save_manifest()
+        end
+    end
 end
 
 local function identity(kind, key, width, height, factor)
@@ -194,6 +206,12 @@ local function write_pixels(path, prefix, pixels)
     return ok
 end
 
+local function clear_pending()
+    pending = {}
+    pending_by_filename = {}
+    pending_size = 0
+end
+
 function M.configure(options)
     options = options or {}
     local enabled = options.enabled == true
@@ -203,6 +221,10 @@ function M.configure(options)
         if options.max_size_bytes ~= nil then
             assert(non_negative_integer(options.max_size_bytes), "texture cache max_size_bytes must be a non-negative integer")
         end
+        if options.deferred_write_bytes ~= nil then
+            assert(non_negative_integer(options.deferred_write_bytes),
+                "texture cache deferred_write_bytes must be a non-negative integer")
+        end
     end
 
     M.flush()
@@ -211,10 +233,13 @@ function M.configure(options)
         folder = enabled and options.folder or nil,
         version = enabled and options.version or nil,
         max_size_bytes = enabled and (options.max_size_bytes or default_max_size()) or 0,
+        deferred_write_bytes = enabled and options.deferred_write_bytes or nil,
     }
     manifest = nil
     total_size = 0
     access_updates = 0
+    deferred_access_update = false
+    clear_pending()
     if enabled and load_manifest() then
         if total_size > config.max_size_bytes then
             evict_to_fit(0)
@@ -229,6 +254,7 @@ end
 
 function M.clear()
     if not config.enabled then return false end
+    clear_pending()
     if not load_manifest() then return false end
     local removed = true
     for filename in pairs(manifest.files) do
@@ -250,6 +276,8 @@ end
 
 function M.load(record)
     if not config.enabled then return nil end
+    local queued = pending_by_filename[record.filename]
+    if queued then return queued.pixels end
     if not load_manifest() or manifest.files[record.filename] == nil then return nil end
 
     local prefix = record_prefix(record.width, record.height)
@@ -274,14 +302,8 @@ function M.touch(record)
     return true
 end
 
-function M.store(record, pixels)
-    if not config.enabled then return false end
-    if type(pixels) ~= "string" or #pixels ~= record.width * record.height * 4 then
-        return false
-    end
-
+local function store_pixels(record, prefix, pixels)
     if not load_manifest() then return false end
-    local prefix = record_prefix(record.width, record.height)
     local size = #prefix + #pixels
     -- Oversized textures still render, but must not empty the cache or be saved.
     if size > config.max_size_bytes then return false end
@@ -308,6 +330,45 @@ function M.store(record, pixels)
         return false
     end
     return true
+end
+
+function M.store(record, pixels)
+    if not config.enabled then return false end
+    if type(pixels) ~= "string" or #pixels ~= record.width * record.height * 4 then return false end
+
+    local prefix = record_prefix(record.width, record.height)
+    if not config.deferred_write_bytes then return store_pixels(record, prefix, pixels) end
+
+    if pending_by_filename[record.filename] then return true, true end
+    local size = #prefix + #pixels
+    -- Cache writes are optional. Retain a bounded amount of raster data and
+    -- drop new entries when busy instead of writing them during a load.
+    if size > config.max_size_bytes or pending_size + size > config.deferred_write_bytes
+        or #pending >= MAX_PENDING_RECORDS then return false, true end
+
+    local entry = { record = record, prefix = prefix, pixels = pixels }
+    pending_by_filename[record.filename] = entry
+    pending[#pending + 1] = entry
+    pending_size = pending_size + size
+    return true, true
+end
+
+-- Call from an idle update. Each call attempts one atomic texture write or
+-- one batched access update, so a scene load never drains the queue itself.
+function M.update()
+    local entry = table.remove(pending, 1)
+    if entry then
+        pending_by_filename[entry.record.filename] = nil
+        pending_size = pending_size - #entry.prefix - #entry.pixels
+        local stored = store_pixels(entry.record, entry.prefix, entry.pixels)
+        return true, stored and #entry.pixels or nil, "bezier.cache.write"
+    end
+    if deferred_access_update then
+        deferred_access_update = false
+        save_manifest()
+        return true, nil, "bezier.cache.flush"
+    end
+    return false
 end
 
 return M

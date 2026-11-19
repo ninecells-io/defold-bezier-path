@@ -269,6 +269,29 @@ for _, limit in ipairs({ -1, 0.5, math.huge, 0 / 0, "invalid" }) do
     assert(not pcall(configure, "invalid", limit))
 end
 
+local deferred = { enabled = true, folder = "deferred", version = "lru",
+    max_size_bytes = record_size * 2, deferred_write_bytes = record_size * 2 }
+cache.configure(deferred)
+local writes_before_queue = manifest_writes
+assert(cache.store(a, pixels) and cache.store(a, pixels) and cache.store(b, pixels))
+assert(not cache.store(c, pixels), "pending bytes must be bounded and deduplicated")
+assert(cache.load(a) == pixels and cache.load(b) == pixels, "queued pixels must already be reusable")
+assert(manifest_writes == writes_before_queue and disk_size("deferred") == 0)
+assert(cache.update() and disk_size("deferred") == record_size, "one update must persist only one file")
+assert(cache.update() and disk_size("deferred") == record_size * 2)
+assert(not cache.update())
+local writes_before_touches = manifest_writes
+for _ = 1, 64 do assert(cache.touch(a)) end
+assert(manifest_writes == writes_before_touches, "deferred cache hits must not write during loads")
+assert(cache.update() and manifest_writes == writes_before_touches + 1)
+assert(cache.store(c, pixels) and cache.update())
+assert(cache.load(b) == nil and cache.load(a) == pixels, "idle writes must enforce the existing LRU disk budget")
+assert(cache.store(b, pixels))
+assert(cache.clear() and not cache.update() and disk_size("deferred") == 0)
+assert(cache.store(c, pixels))
+cache.configure(deferred)
+assert(cache.load(c) == nil and not cache.update(), "stale pending data must not cross reconfiguration")
+
 -- Exercise same-scene reuse through the public API: it skips disk loads but
 -- must still protect the recently used texture from the next eviction.
 package.preload["helpers.color_helper"] = function() return {} end

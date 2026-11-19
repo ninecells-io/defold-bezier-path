@@ -147,6 +147,13 @@ function M.flush_texture_cache()
     return ok
 end
 
+function M.update_texture_cache()
+    local started = observe and now()
+    local attempted, bytes, event = texture_cache.update()
+    if attempted then report_elapsed(event, started, bytes) end
+    return attempted
+end
+
 function M.clear_texture_cache()
     return texture_cache.clear()
 end
@@ -415,7 +422,9 @@ end
 --Draw a stroke along the path
 function M.stroke_path(buffer_info, width, color, position, cap_style, join_style)
     M.checkpoint()
+    local started = observe and now()
     bezierpath.stroke_path(buffer_info, width, color.r, color.g, color.b, color.a, position, cap_style, join_style)
+    report_elapsed("bezier.raster.stroke", started)
 end
 
 --Draw a glow effect along the path
@@ -538,8 +547,10 @@ end
 
 local function store_cached(record, pixels)
     local started = observe and now()
-    local stored = texture_cache.store(record, pixels)
-    if started then report_elapsed("bezier.cache.write", started, stored and #pixels or nil) end
+    local stored, deferred = texture_cache.store(record, pixels)
+    if started then
+        report_elapsed(deferred and "bezier.cache.enqueue" or "bezier.cache.write", started, stored and #pixels or nil)
+    end
 end
 
 local function touch_cached(record)
