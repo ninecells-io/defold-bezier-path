@@ -82,6 +82,24 @@ assert(first == second and draws == 1, "same-scene calls must reuse the runtime 
 local scaled = api.create_texture("button.primary", 4, 3, function() draws = draws + 1 end, nil, 1)
 assert(scaled ~= first and draws == 2, "factor must be part of texture identity")
 
+for _, cap in ipairs({ 1.25, 1.5, 2 }) do
+    api.set_texture_factor_cap(cap)
+    assert(api.set_default_texture_factor(3) == 3 and api.get_default_texture_factor() == cap)
+    local capped = api.create_texture("button.primary", 4, 3, function(info, factor)
+        assert(factor == cap)
+        assert(info.width == math.floor(4 * cap) and info.height == math.floor(3 * cap))
+    end, nil, 3)
+    local same = api.create_texture("button.primary", 4, 3, function() error("expected a cache hit") end)
+    assert(same == capped and (capped == first) == (cap == 2))
+    assert(api.create_texture("button.primary", 4, 3, function() error("expected 1x reuse") end, nil, 1) == scaled)
+    local thin = api.create_texture("thin", 5, 0.3, function(info) assert(info.height == 1) end)
+    assert(dynamic_textures[thin].height == 1)
+end
+assert(not pcall(api.set_texture_factor_cap, -1))
+api.set_texture_factor_cap(nil)
+assert(api.get_default_texture_factor() == 3)
+api.set_default_texture_factor(2)
+
 local box, box_texture = api.add_gui_box({}, 8, 6, {}, true, "panel", function(_, params)
     draws = draws + 1
     assert(params.kind == "panel")

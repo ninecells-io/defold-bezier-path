@@ -19,11 +19,11 @@ Add both libraries to **game.project → Project → Dependencies**, then fetch 
 
 ```ini
 [project]
-dependencies#0 = https://github.com/ninecells-io/defold-bezier-path/archive/refs/tags/1.1.2.zip
+dependencies#0 = https://github.com/ninecells-io/defold-bezier-path/archive/refs/tags/1.1.3.zip
 dependencies#1 = https://github.com/ninecells-io/defold-helpers/archive/refs/tags/0.1.7.zip
 ```
 
-The first URL pins this library to release 1.1.2 for reproducible builds. See the [release notes](https://github.com/ninecells-io/defold-bezier-path/releases/tag/1.1.2). `defold-helpers` 0.1.7 is a public dependency used for color and GUI node helpers; consumers must add it explicitly because Defold does not fetch transitive library dependencies. Only `bezierpath/` is exported as this library.
+The first URL pins this library to release 1.1.3 for reproducible builds. See the [release notes](https://github.com/ninecells-io/defold-bezier-path/releases/tag/1.1.3). `defold-helpers` 0.1.7 is a public dependency used for color and GUI node helpers; consumers must add it explicitly because Defold does not fetch transitive library dependencies. Only `bezierpath/` is exported as this library.
 
 A native extension build is required. Defold's normal hosted build service is supported; the extension has no OS-specific rendering dependencies. The current demo is validated with Defold 1.13.0 on Apple Silicon macOS; other platforms require their own build/runtime verification.
 
@@ -135,6 +135,8 @@ Use `local bp = require "bezierpath.bezierpath"`. Unless a return value is liste
 | `draw_texture_region(bounds, draw_fn, params)` | Return `bytes, normalized_bounds`; callback is `draw_fn(b, params)`. Factor 1 with original-coordinate origin, no cache. |
 | `create_texture_region(key, bounds, draw_fn, params)` | Return `texture_id, normalized_bounds`; same origin/callback behavior as the raw region helper, with optional caching. |
 | `set_default_texture_factor(factor)` | Set and return default supersampling factor; values below 2 clamp to 2, invalid/nonfinite values reset to 2. |
+| `set_texture_factor_cap(factor)` | Cap supersampling for generated textures at a positive finite factor. Pass `nil` to clear the cap. |
+| `resolve_texture_factor(factor)` | Return the effective supersampling factor for an explicit factor or the default. |
 | `get_default_texture_factor()` | Return the current default factor. |
 | `begin_texture_generation(owner)` | Delete the previous generation's tracked textures for this owner and start tracking newly requested textures. Owner must be non-nil; generations cannot nest. |
 | `end_texture_generation(owner)` | End tracking; owner must match the active generation. |
@@ -149,7 +151,7 @@ Texture keys must encode **every input that changes the pixels**. They are logic
 
 Generation tracking is intended for one exclusive owner of a texture set. Delete or detach old nodes before starting the next generation. Do not share generation-owned textures across independent owners: the next generation deletes the previous textures immediately.
 
-For density-aware textures, an application can set `bp.set_default_texture_factor(math.max(2, window.get_display_scale() * interface_scale))`. An explicit positive factor passed to `create_texture` overrides the default, including factor 1.
+For density-aware textures, an application can set `bp.set_default_texture_factor(math.max(2, window.get_display_scale() * interface_scale))`. An explicit positive factor passed to `create_texture` overrides the default, including factor 1. An optional `set_texture_factor_cap` limits both the default and explicit supersampling factors.
 
 ### Cooperative rendering
 

@@ -4,6 +4,7 @@ local texture_cache = require("bezierpath.texture_cache")
 
 local MINIMUM_TEXTURE_FACTOR = 2
 local default_texture_factor = MINIMUM_TEXTURE_FACTOR
+local texture_factor_cap
 
 local M = {}
 local loading_tasks = setmetatable({}, { __mode = "k" })
@@ -101,8 +102,18 @@ function M.set_default_texture_factor(factor)
     return default_texture_factor
 end
 
+function M.set_texture_factor_cap(factor)
+    assert(factor == nil or (is_finite(factor) and factor > 0), "texture factor cap must be positive and finite")
+    texture_factor_cap = factor
+end
+
+function M.resolve_texture_factor(factor)
+    if not is_finite(factor) or factor <= 0 then factor = default_texture_factor end
+    return texture_factor_cap and math.min(factor, texture_factor_cap) or factor
+end
+
 function M.get_default_texture_factor()
-    return default_texture_factor
+    return M.resolve_texture_factor()
 end
 
 -- GUI textures belong to a GUI scene and survive until they are explicitly
@@ -592,11 +603,9 @@ end
 function M.create_texture(key, width, height, draw_fn, params, factor)
     M.checkpoint()
 
-    factor = factor or default_texture_factor
-    if not is_finite(factor) or factor <= 0 then factor = default_texture_factor end
-
-    width = math.floor(width * factor)
-    height = math.floor(height * factor)
+    factor = M.resolve_texture_factor(factor)
+    width = math.max(1, math.floor(width * factor))
+    height = math.max(1, math.floor(height * factor))
 
     local record = texture_cache.describe("texture", key, width, height, factor)
     local texture_name, created = create_gui_texture(record.runtime_name, width, height, function()
